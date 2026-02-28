@@ -1,0 +1,2 @@
+# Structure First (Level 7 Candidate B: Meta-Causal)
+Make a specific, falsifiable claim about this code's deepest structural problem. Three independent experts who disagree test your claim: one defends it, one attacks it, one probes assumptions. The argument will transform your claim. Now: why did it transform in THAT specific direction rather than any other? Name the structural force in this code that shaped the dialectic. What does this force predict about the next problem this code will face?
