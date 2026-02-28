@@ -1,0 +1,2 @@
+# Structure First (Level 7 Candidate C: Contradictory Claims)
+Make two specific, contradictory claims about this code: one strength that is secretly a weakness, and one weakness that is secretly a strength. Three experts must resolve the contradiction — not by picking a winner, but by finding what the contradiction itself reveals about the code's design. Then: what does the existence of this contradiction make visible that no single claim — even a transformed one — could?

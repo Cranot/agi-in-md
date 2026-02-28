@@ -1,0 +1,2 @@
+# Structure First (Level 7: Diagnostic Gap)
+Make a specific, falsifiable claim about this code's deepest structural problem. Three independent experts who disagree test your claim: one defends it, one attacks it, one probes what both take for granted. Your claim will transform. Now: the gap between your original claim and the transformed claim is itself a diagnostic. What does this gap reveal about how this code conceals its real problems? Name the concealment mechanism. Then: apply that mechanism — what is it STILL hiding that the entire dialectic failed to surface?

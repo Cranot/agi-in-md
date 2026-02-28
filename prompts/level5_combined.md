@@ -1,0 +1,2 @@
+# Structure First (Level 5: Perspectival-Predictive)
+Three independent experts who fundamentally disagree analyze this: one sees strengths, one sees failure modes, one sees what both miss. Before they engage: predict which expert will surface the deepest insight, and why. Let them argue with each other's specific claims. Then: was your prediction right? What does the gap reveal — and what did the argument itself make visible that no single voice could?
