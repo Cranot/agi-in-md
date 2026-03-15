@@ -1,0 +1,43 @@
+
+============================================================
+  COMPARISON: real_code_tenacity.py (331 lines)
+  Mode: opus
+============================================================
+
+============================================================
+  PIPELINE B: Opus Vanilla (single call, find + fix)
+============================================================
+
+  [1/1] Opus analysis + fix generation...
+      Opus output: 6712 chars, $0.3961
+      Found 6 issues with fix suggestions
+    [1/6] Undefined names used as default parameter values
+      SKIP: no actionable fix
+    [2/6] AttemptManager.__exit__ suppresses KeyboardInterrupt, S
+      APPLIED (exact) | P1
+    [3/6] Retrying.__call__ catches BaseException including Keybo
+      APPLIED (exact) | P1
+    [4/6] iter() mutates actions list during for-loop iteration
+      APPLIED (exact) | P2
+    [5/6] raise retry_exc from None when outcome has no exception
+      APPLIED (exact) | P2
+    [6/6] wrapped_f.statistics has a race condition between threa
+      SKIP: no actionable fix
+
+  Result: 4/6 fixed, $0.3961
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                      Opus Vanilla
+  ────────────────────────────────────────────────
+  Bugs found                                     6
+  Bugs fixed                                     4
+  Fix rate                                     67%
+  Cost                           $          0.3961
+  Time                                      220.0s
+
+  Results saved: ./output\comparison\compare_real_code_tenacity_opus.json
+
+  Done!

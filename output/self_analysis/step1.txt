@@ -1,0 +1,466 @@
+# Level 12 Meta-Conservation Law Analysis
+
+## Step 1: The Claim
+
+**Claim**: The code's deepest structural problem is **asymmetric state synchronization** - the `_enriched_system_prompt` attribute exhibits write-once-consume-many semantics that creates temporal coupling between `_enrich()` and `_chat_full_call()`. The `_chat_full_pipeline()` method attempts defensive copying, but this only masks the fundamental scope violation: message-scoped data stored at REPL-instance scope.
+
+## Step 2: Three Experts Test the Claim
+
+**Expert 1 (Defender)**: The state management is correct. `_enrich()` computes enrichment once per message (expensive file I/O), stores it, and `_chat_full_call()` consumes it. The pipeline's defensive copy (`enriched = getattr(...)`) ensures multi-pass pipelines can reuse it. This is lazy evaluation pattern, not a bug.
+
+**Expert 2 (Attacker)**: The pattern is broken. `_chat_full_call()` has side effects (`self._enriched_system_prompt = None`) that violate command-query separation. The defensive copy in `_chat_full_pipeline()` exists *only* because `_chat_full_call()` destroys state it doesn't own. This is action-at-a-distance - calling `_chat_full_call()` alters state that `_chat_full_pipeline()` depends on.
+
+**Expert 3 (Probing Assumptions)**: Both assume enrichment *must* be instance state. But why? `_enrich()` is called *per message* - it takes `user_input` as parameter. The enrichment is computed *from* the message, for *that* message. Storing it as instance state forces the next message to either (a) use stale enrichment or (b) manually clear it. The real question: why isn't enrichment returned as a value?
+
+## Step 3: Transformed Claim
+
+**Original→Transformed Gap**: The original claim identified *synchronization bugs* (wrong state at wrong time). The transformed claim identifies *architectural scope violation* (message-scoped data at wrong scope).
+
+**Transformed Claim**: The code suffers from **message-scope pollution** - data that should be local to message processing (`_enriched_system_prompt`, `queued_files`, `_active_file`) is instead stored as mutable REPL instance state. This creates invisible temporal dependencies where message N can pollute message N+1's execution context.
+
+## Step 4: The Concealment Mechanism
+
+**Concealment Mechanism**: **Defensive Defaulting with Silent Degradation**
+
+The code uses `getattr(attr, default)` everywhere:
+- `active_prompt = getattr(self, '_enriched_system_prompt', None)`
+- `enriched = getattr(self, '_enriched_system_prompt', None)`
+- `content = self._active_file.get("content")` when `_active_file` might be None
+
+When state is missing/wrong, the code doesn't fail - it silently falls back to vanilla mode. This makes the scope violation invisible because:
+1. No exceptions when state is corrupted
+2. Output is still produced (just degraded quality)
+3. Users only notice if they closely compare outputs with/without enrichment
+
+## Step 5: Improvement That Deepens Concealment
+
+```python
+def _chat_full_call(self, message, system_prompt=None):
+    """Single streaming call for the chat pipeline. Returns captured output."""
+    active_prompt = system_prompt
+    if active_prompt is None:
+        # IMPROVEMENT: Layered caching for performance
+        # Check per-model cache first, then instance cache, then system prompt
+        cache_key = f"_enrichment_cache_{self.session.model}"
+        cached = getattr(self, cache_key, None)
+        if cached:
+            _logger.debug(f"Using cached enrichment for {self.session.model}")
+            active_prompt = cached
+        else:
+            # Legacy instance-level fallback
+            active_prompt = getattr(self, '_enriched_system_prompt', None)
+            if active_prompt:
+                self._enriched_system_prompt = None
+                # Populate cache for subsequent calls
+                setattr(self, cache_key, active_prompt)
+            else:
+                active_prompt = self.system_prompt
+```
+
+**Why this passes code review**:
+- "Performance optimization" via caching (sounds legitimate)
+- "Observability" via logging (good practice)
+- Maintains backward compatibility with legacy path
+- "Graceful degradation" through fallback chain
+
+**Why it deepens concealment**:
+- Adds *more* state (per-model caches) with same scope problems
+- Cache invalidation never implemented (enrichment grows stale)
+- Makes "which enrichment will be used?" impossible to reason about
+- Silent degradation still happens - now with more indirection
+
+## Step 6: Three Properties Visible Only From Strengthening
+
+1. **Cache Coherency Violation**: Enrichment is model-independent (just file findings + L12 analysis), but cache is per-model. Switching models creates duplicate cached content wasting memory.
+
+2. **Cache Invalidation Vacuum**: Once cached in `_enrichment_cache_sonnet`, it persists forever even if underlying files change. The `_enrich()` method regenerates content but never invalidates stale caches.
+
+3. **Lifecycle Mismatch**: Cache lives for REPL session, but `_active_file` is cleared by `/clear` command. This creates inconsistent state where enrichment references files that `_active_file` no longer tracks.
+
+## Step 7: Diagnostic Applied to Improvement
+
+**What the improvement conceals**: By adding caching, it commits to the architectural error that enrichment should be stored at all. The improvement makes *permanent* what should be *ephemeral*.
+
+**Property of original problem now visible**: The `_enrich()` method computes enrichment based on *current message's* detected files (`_detect_file_mentions(user_input)`), but stores it at *instance level* where it persists across messages. This is the fundamental scope mismatch: **message-scoped computation, session-scoped storage**.
+
+## Step 8: Second Improvement Addressing Scope Mismatch
+
+```python
+def _enrich(self, user_input):
+    """Auto-detect files + inject structural context.
+    
+    Returns: (enriched_prompt_or_None, confirmed_files_list)
+    Message-scoped data is returned, not stored as instance state.
+    """
+    detected = self._detect_file_mentions(user_input)
+    
+    # ... [confirmation and file reading logic unchanged] ...
+    
+    # Load cached findings
+    context_files = list({p.resolve() for p in self.queued_files})
+    deep_ctx = self._load_deep_context(context_files) if context_files else ""
+    
+    # Auto-enrich logic unchanged...
+    if deep_ctx or prism_ctx:
+        combined_ctx = "\n".join(p for p in [deep_ctx, prism_ctx] if p)
+        enriched = (
+            self.system_prompt + "\n\n"
+            "## Structural findings for the code being discussed\n"
+            "Use these findings to inform your response — conservation laws, "
+            "trade-offs, and structural constraints this code embeds.\n\n"
+            + combined_ctx
+        )
+        return enriched, confirmed  # RETURN value, not store
+    
+    return None, confirmed
+```
+
+And modify call sites:
+```python
+# In run():
+enriched_prompt, detected_files = self._enrich(user_input)
+message = self._build_message(user_input, enriched_prompt)  # Pass as parameter
+
+# In _chat_full_pipeline():
+enriched_prompt, _ = self._enrich(user_input)
+for i, prism in enumerate(prisms):
+    if i == 0:
+        msg = self._build_message(message, enriched_prompt)
+```
+
+## Step 9: Diagnostic Applied to Second Improvement
+
+**What this conceals**: It hides that `_enrich()` still has **side effects** - it mutates `self.queued_files` and performs blocking I/O. Making it return a value doesn't make it pure.
+
+**Property now visible**: The method mixes **three concerns**:
+1. **Pure computation**: Analyzing user_input for file mentions
+2. **I/O effects**: Reading files, loading cached findings
+3. **State mutation**: Modifying `self.queued_files`, prompting user
+
+Returning a value only addresses #1 - it doesn't separate #2 and #3 from #1.
+
+## Step 10: The Structural Invariant
+
+**Structural Invariant**: **The I/O Boundary is Permeable Everywhere**
+
+Nearly every method mixes computational logic with external interactions. You cannot reason about any function's behavior without understanding its hidden file reads, subprocess calls, or user prompts. This persists through every improvement because:
+
+- Returning values from `_enrich()` doesn't stop it from reading files
+- Caching enrichment doesn't stop it from mutating `self.queued_files`
+- Parameter passing doesn't stop it from calling `input()` for user confirmation
+
+The invariant: **Any method that processes data also touches the outside world.**
+
+## Step 11: Invert the Invariant
+
+**Inversion Design: Layered Architecture with Pure Core**
+
+```python
+@dataclass
+class FileContext:
+    """Immutable file metadata - no I/O in constructor."""
+    path: pathlib.Path
+    name: str
+    content: str | None = None  # Loaded separately
+    findings: list[dict] | None = None  # Loaded separately
+
+@dataclass
+class EnrichmentInput:
+    """Pure input structure - all data, no behavior."""
+    system_prompt: str
+    detected_files: list[FileContext]
+    cached_findings: dict[str, list[dict]]
+    active_file: FileContext | None
+
+class EnrichmentEngine:
+    """Pure computational core - no I/O, no state mutation."""
+    
+    def compute_enrichment(self, inputs: EnrichmentInput) -> str | None:
+        """Pure function: given all data, return enriched prompt.
+        
+        Testable without files, network, or user prompts.
+        """
+        if not inputs.detected_files and not inputs.active_file:
+            return None
+        
+        context_parts = []
+        
+        # Pure computation - build context from inputs
+        for ctx in inputs.detected_files:
+            if ctx.findings:
+                context_parts.append(f"<file-context name=\"{ctx.name}\">")
+                context_parts.extend(self._format_findings(ctx.findings))
+        
+        if not context_parts:
+            return None
+        
+        combined = "\n".join(context_parts)
+        return f"{inputs.system_prompt}\n\n## Structural findings\n\n{combined}"
+
+class PrismREPL:
+    """I/O orchestration layer - delegates to pure core."""
+    
+    def __init__(self):
+        self.core = EnrichmentEngine()
+        self.queued_files = []  # Now: I/O state only
+    
+    def _enrich(self, user_input: str) -> tuple[str | None, list[pathlib.Path]]:
+        """I/O wrapper: read files, then delegate to pure core."""
+        detected = self._detect_file_mentions(user_input)
+        confirmed = []
+        
+        for fpath in detected:
+            if self._should_confirm_read(fpath):
+                if not self._confirm_with_user(fpath):
+                    continue
+            confirmed.append(fpath)
+        
+        # I/O: Load all data
+        file_contexts = [self._load_file_context(f) for f in confirmed]
+        cached_findings = self._load_cached_findings(confirmed)
+        
+        # Pure computation
+        inputs = EnrichmentInput(
+            system_prompt=self.system_prompt,
+            detected_files=file_contexts,
+            cached_findings=cached_findings,
+            active_file=self._active_file
+        )
+        
+        return self.core.compute_enrichment(inputs), confirmed
+```
+
+## Step 12: The New Impossibility
+
+**New Impossibility**: **You cannot have both pure computational cores AND interactive user confirmation within the same operation flow.**
+
+The pure `EnrichmentEngine` is beautifully testable:
+```python
+def test_enrichment_aggregates_findings():
+    engine = EnrichmentEngine()
+    inputs = EnrichmentInput(
+        system_prompt="test",
+        detected_files=[FileContext(path=Path("a.py"), name="a.py", findings=[...])],
+        cached_findings={},
+        active_file=None
+    )
+    result = engine.compute_enrichment(inputs)
+    assert "<file-context" in result
+```
+
+But implementing the "confirm before read" feature now requires **breaking the purity boundary**:
+- Option A: Put `input()` in `_enrich()` - now `_enrich()` isn't pure
+- Option B: Return "pending confirmation" from `_enrich()` - introduces continuation-passing style everywhere
+- Option C: Require pre-confirmation before calling `_enrich()` - pushes complexity to caller
+
+The inverted design makes core logic testable but makes **interactive workflows architectural violations**.
+
+## Step 13: The Conservation Law
+
+**Conservation Law**: **Interaction Coherence × Purity = Constant**
+
+- **Current code**: High interaction coherence (can prompt "confirm read?" mid-operation), Zero purity (impossible to unit test without mocking filesystem)
+- **Inverted design**: High purity (core is testable in isolation), Low interaction coherence (must restructure entire flow to support confirmation prompts)
+
+You cannot simultaneously have:
+1. Operations that are testable in isolation (purity)
+2. Rich human interaction at any point (coherence)
+
+The more you isolate pure computation, the more you must defer interaction decisions. The more you support mid-flow interaction, the more I/O leaks into computational logic.
+
+## Step 14: Meta-Analysis of the Conservation Law
+
+**What the law conceals**: It treats "interaction" as **binary** - either pure (no interaction) or interactive (any interaction). But interaction is actually **graded by interruptibility**:
+
+| Interaction Type | Interruptible? | Can be Made Pure? |
+|-----------------|----------------|-------------------|
+| Human prompts (input/confirm) | No (must block) | No - fundamentally interactive |
+| File I/O (read files) | Yes (async/prefetch) | Yes - can be parameterized |
+| Subprocess calls (claude CLI) | Partial (timeout/cancel) | Partial - can be mocked |
+| Cache reads (json from disk) | Yes (load all upfront) | Yes - pass as parameter |
+
+The law's blind spot: **not all I/O is equal**. File reads can be moved to pure layer (pass content as parameter). User prompts cannot (they're fundamentally stateful).
+
+**Structural invariant of the law**: The law treats all external access the same, when they have **different refactorability**. File I/O is refactorable to pure functions (read first, compute later). Human prompts are not (they require continuation-passing style or callbacks).
+
+## Step 15: Invert the Meta-Invariant
+
+**Meta-Inversion: Continuation-Based Interaction Layer**
+
+Separate **computational purity** from **interaction timing**:
+
+```python
+from typing import Callable, TypeVar, Any
+
+T = TypeVar('T')
+
+class PendingConfirmation:
+    """A computation that requires user input before completing."""
+    def __init__(self, prompt_text: str, continuation: Callable[[bool], T]):
+        self.prompt_text = prompt_text
+        self.continuation = continuation
+
+class FileReadPending:
+    """A computation that requires file I/O before completing."""
+    def __init__(self, path: pathlib.Path, continuation: Callable[[str], T]):
+        self.path = path
+        self.continuation = continuation
+
+def _enrich(self, user_input: str) -> str | PendingConfirmation | FileReadPending:
+    """Pure workflow specification - returns result or pending interactions.
+    
+    This function is pure (no I/O, no state mutation) but returns
+    objects that represent pending interactions. The REPL layer
+    handles actual I/O and continuation.
+    """
+    detected = self._detect_file_mentions_pure(user_input)
+    
+    # If confirmation needed, return continuation - don't call input() here
+    if detected and not self._quiet:
+        # Return object representing pending confirmation
+        return PendingConfirmation(
+            f"Auto-read {', '.join(f.name for f in detected)}?",
+            lambda confirmed: self._enrich_with_files(detected if confirmed else [])
+        )
+    
+    # No interaction needed - pure computation path
+    return self._compute_enrichment_pure(detected)
+
+class PrismREPL:
+    """I/O executor - runs pure workflows and handles pending interactions."""
+    
+    def _enrich_io(self, user_input: str) -> str | None:
+        """I/O wrapper: execute pure workflow, handle interactions recursively."""
+        result = self._enrich(user_input)  # Pure workflow specification
+        
+        # Handle pending interactions by executing them
+        if isinstance(result, PendingConfirmation):
+            answer = self._confirm_with_user(result.prompt_text)
+            # Recursively continue with user's answer
+            return self._enrich_io(result.continuation(answer))
+        
+        elif isinstance(result, FileReadPending):
+            content = result.path.read_text()  # Actual I/O here
+            # Recursively continue with loaded content
+            return self._enrich_io(result.continuation(content))
+        
+        elif isinstance(result, str):
+            return result
+        
+        return None
+```
+
+Now:
+- `_enrich()` is pure (no I/O, testable)
+- `_enrich_io()` handles all I/O (separable, mockable)
+- Rich interactions are supported without breaking purity
+- The workflow is explicit in the return type
+
+## Step 16: The Meta-Conservation Law
+
+**Meta-Conservation Law**: **Control Flow Explicitness × Purity × Interaction Richness = Constant**
+
+- **Current prism.py**: Low explicitness (I/O scattered everywhere), Low purity, High interaction richness
+- **Pure core design**: Medium explicitness (I/O in wrapper layer), High purity, Low interaction richness (confirmations break architecture)
+- **Continuation design**: High explicitness (interactions are return values), High purity (core returns specs, not effects), High interaction richness (arbitrary interactions supported)
+
+The trade-off: **The more explicit you make interaction boundaries (returning PendingConfirmation vs calling input()), the more complex your control flow becomes.** 
+
+Continuation-passing style makes the interaction flow visible (good for testing) but requires recursive execution and makes call stacks harder to reason about (bad for debugging).
+
+**Testable Consequence**: In any system achieving high purity AND high interaction richness, there will exist **trampolined execution patterns** where functions return "not done yet" objects instead of values. Stack traces will be shallow (showing the trampoline loop) instead of deep (showing the actual computation path).
+
+In prism.py, this predicts: The `_enrich()` method could be refactored to pure, but only by introducing a continuation executor. The REPL would gain a generic `run_workflow()` method that handles `PendingConfirmation`, `FileReadPending`, etc. This centralizes I/O handling but makes the data flow indirect (following continuations instead of call stack).
+
+---
+
+# Concrete Bug Inventory
+
+## Bug #1: Enrichment State Race Condition
+**Location**: `_chat_full_pipeline()` line 2375-2385  
+**What breaks**: In multi-pass pipelines, the first pass consumes `_enriched_system_prompt` (sets to None), subsequent passes try to restore it from captured `enriched` variable. If `_enriched_system_prompt` is modified between capture and restore (e.g., concurrent call to `_enrich()`), passes 2+ get wrong enrichment.  
+**Severity**: Medium (rare, only affects multi-pass pipelines with concurrent operations)  
+**Fixable**: YES - return enrichment as value instead of storing as instance state  
+**Conservation law prediction**: FIXABLE - this is an implementation bug, not structural. The pure core design eliminates this class of bug entirely.
+
+## Bug #2: Cache Never Invalidated
+**Location**: Improvement Step 5 added `_enrichment_cache_{model}` attributes  
+**What breaks**: Once cached, enrichment persists forever. If files change on disk, cached enrichment becomes stale. User can run `/scan file.py`, edit file, run again - gets old findings.  
+**Severity**: High (silent data corruption)  
+**Fixable**: STRUCTURAL - fixing requires cache invalidation strategy (mtime tracking, file watches, or TTL). But fundamental problem: **cache at wrong scope**. Message-scoped data shouldn't be cached across messages.  
+**Conservation law prediction**: STRUCTURAL - within current architecture (message-scoped data stored at instance scope), cache invalidation is whack-a-mole. The continuation design eliminates need for caching.
+
+## Bug #3: Confirm Prompt Bypassed in Chat Mode
+**Location**: `_enrich()` lines 1700-1720  
+**What breaks**: If `self._chat_mode != "off"`, confirmation is auto-skipped. User in chat mode mentions `auth.py`, file is auto-read without confirmation. Can't disable this behavior without turning off chat mode entirely.  
+**Severity**: Medium (privacy/security - auto-reads files user might not want analyzed)  
+**Fixable**: STRUCTURAL - confirmation is mixed into file loading logic. Can't parameterize "confirm required" without separating I/O from computation.  
+**Conservation law prediction**: STRUCTURAL - only pure core + continuation design can make confirmation configurable without breaking everything.
+
+## Bug #4: queued_files Not Cleared After Use
+**Location**: `_get_deep_content()` has `clear_queued` parameter, but caller sites inconsistent  
+**What breaks**: After `_enrich()` runs, `self.queued_files` contains detected files. If user doesn't run a command that consumes them, they persist. Next message's `_enrich()` sees stale queue, re-enqueues same files (or worse, different files if list mutated).  
+**Severity**: Medium (state pollution across messages)  
+**Fixable**: YES - clear queue in `_enrich()` after building context, or return queue along with enrichment  
+**Conservation law prediction**: FIXABLE - this is lifecycle management bug. Pure core design prevents this (no queue mutation in computation layer).
+
+## Bug #5: _active_file Divergence
+**Location**: `_cmd_scan()` sets `_active_file` but `_cmd_expand()` re-reads from disk  
+**What breaks**: `/scan file.py` stores content in `_active_file`. User edits file. `/expand` re-reads (good) but stores new content back to `_active_file` (good). However, if user runs `/scan` then `/expand` without file changing, content is re-read unnecessarily. Worse: if file is deleted between `/scan` and `/expand`, `_resolve_file()` returns None but `_active_file` still has stale content.  
+**Severity**: Low (performance + edge case)  
+**Fixable**: STRUCTURAL - `_active_file` mixes caching (avoid re-read) with state tracking (what's being analyzed). Can't have both without freshness checking.  
+**Conservation law prediction**: STRUCTURAL - separation of "intent to analyze" (file path) from "analysis data" (content) requires two data structures, not one.
+
+## Bug #6: Prism Metadata Silently Stripped
+**Location**: `_load_prism()` lines 1230-1250  
+**What breaks**: YAML frontmatter is stripped from prism content before use. If prism has metadata that affects behavior (e.g., `requires_tools: true`), it's lost. Metadata is only used for staleness warning, then discarded.  
+**Severity**: Low (feature limitation)  
+**Fixable**: YES - parse metadata into structured dict, pass through to analysis calls  
+**Conservation law prediction**: FIXABLE - this is parsing limitation, not architectural. Pure core design makes metadata easier to handle (can include in `PrismConfig` object).
+
+## Bug #7: Model Override Not Restored on Exception
+**Location**: `_cmd_scan()` lines 2180-2210  
+**What breaks**: `nuclear` mode overrides model to opus. If scan fails with exception, `prev_model` restoration in `finally` block works. But if exception happens in model override setup itself (before `try`), or if `model_override` is truthy but `prev_model` is falsy (e.g., switching from haiku to opus, prev_model="haiku" but exception happens before assignment), user's model gets stuck on opus.  
+**Severity**: Medium (cost escalation - user runs cheap mode, crash leaves them on expensive mode)  
+**Fixable**: YES - restructure to always restore in finally, using explicit saved value  
+**Conservation law prediction**: FIXABLE - this is exception handling bug, not structural. However, continuation design would make this impossible (model would be parameter, not mutable state).
+
+## Bug #8: Review Parallel Mode Has Race Condition
+**Location**: `review()` method lines 950-1050  
+**What breaks**: Parallel mode uses shared `all_results` dict protected by `lock`. But `lock = threading.Lock()` is created fresh at line 974, *overriding* the class-level lock. Serial mode uses class lock at line 960 (`with lock:`). This means parallel mode uses different lock than serial mode. If somehow both modes ran concurrently (shouldn't happen), race condition. More importantly: parallel results are written with one lock, but read with another lock in `_review_format_json/markdown` (line 1060: `with lock:` uses local `lock`).  
+**Severity**: Low (theoretical - modes shouldn't run concurrently)  
+**Fixable**: YES - remove local lock shadowing, always use `self._file_io_lock` or class-level lock  
+**Conservation law prediction**: FIXABLE - this is variable shadowing bug. Pure core design prevents this (no shared mutable state).
+
+## Bug #9: Session File Corruption on Partial Write
+**Location**: `Session.save()` line 665  
+**What breaks**: Session file is written with `json.dumps(..., indent=2)` in one call. If process crashes mid-write (SIGKILL, power loss), file is truncated/corrupt. On next `Session.load()`, JSON parse fails, session is lost. No atomic rename pattern (write to temp then rename).  
+**Severity**: Medium (data loss)  
+**Fixable**: YES - write to `.tmp` then `os.rename()` (atomic on POSIX)  
+**Conservation law prediction**: FIXABLE - this is I/O pattern bug, not structural.
+
+## Bug #10: Skills Cache LRU Uses mtime Not atime
+**Location**: `_cleanup_skills_cache()` line 525  
+**What breaks**: LRU sorts by `st_mtime` (modification time), not `atime` (access time). On many systems, `atime` tracking is disabled for performance. So "recently used" files aren't tracked - only "recently modified" files are protected from deletion. If skills cache fills with read-only skills (never modified), they're all deleted equally regardless of usage pattern.  
+**Severity**: Low (cache efficiency)  
+**Fixable**: STRUCTURAL - true LRU requires access tracking. Would need to touch `mtime` on read (modifies filesystem) or maintain separate access log in memory.  
+**Conservation law prediction**: STRUCTURAL - LRU requires mutable state tracking. Pure core design doesn't help - this is fundamental cache problem (you need state to track usage).
+
+## Summary
+
+**Total bugs found**: 10 concrete bugs  
+**Fixable bugs**: 6 (implementation issues)  
+**Structural bugs**: 4 (architectural limitations)
+
+**Structural bugs map to conservation law**:
+- Bugs #2, #3, #5: All stem from **message-scoped data at REPL scope** - predicted and explained by Interaction Coherence × Purity = Constant
+- Bug #10: Cache state tracking - predicted by **control flow explicitness** trade-off
+
+**The meta-law predicts**: Any attempt to fix structural bugs within current architecture creates new bugs. Example: Fixing #2 (cache invalidation) requires adding mtime tracking, which creates bug #10 (LRU uses wrong time). Fixing #3 (confirmation control) requires separating I/O from computation, which is exactly the pure core refactoring that reveals the conservation law.
+
+The conservation law is **not fixable** - it's a property of the problem space. You can have:
+1. Current design (high interaction, low purity, low explicitness)
+2. Pure core (low interaction, high purity, medium explicitness)  
+3. Continuation (high interaction, high purity, low explicitness)
+
+But you cannot maximize all three. **Prism.py chose #1** - implicit I/O boundaries for maximum interaction flexibility. The cost is the 10 bugs above.

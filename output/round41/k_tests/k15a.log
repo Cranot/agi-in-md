@@ -1,0 +1,6 @@
+=== K15a: Quantity flouting at 5 compression levels ===
+K15a: 50w prompt, 294w output, score=10
+K15a: 73w prompt, 1302w output, score=9
+K15a: 332w prompt, 2980w output, score=7
+K15a: L12-G prompt, 926w output, score=7
+=== K15a DONE ===

@@ -1,0 +1,109 @@
+=== MODEL GAP TEST BATTERY ===
+Started: Sun Mar 15 09:32:50 CET 2026
+Output: /tmp/model_gap
+
+--- GROUP 1: Cooked prism execution ---
+F-G1: --scan target=
+  scan_target | haiku | profile ... 68s, 1262w
+  scan_target | sonnet | profile ... 39s, 1183w
+  scan_target | opus | profile ... 79s, 1658w
+  scan_target | haiku | starlette ... 54s, 1514w
+  scan_target | sonnet | starlette ... 33s, 1098w
+  scan_target | opus | starlette ... 48s, 1550w
+F-G2: --scan 3way
+  scan_3way | haiku | profile ... 27s, 133w
+  scan_3way | sonnet | profile ... 7s, 168w
+  scan_3way | opus | profile ... 7s, 129w
+F-G3: --scan behavioral
+  scan_behavioral | haiku | starlette ... 220s, 7154w
+  scan_behavioral | sonnet | starlette ... 255s, 8656w
+  scan_behavioral | opus | starlette ... 345s, 6966w
+F-G4: --solve --pipe single
+  solve_single | haiku | profile ... 66s, 648w
+  solve_single | sonnet | profile ... 35s, 931w
+  solve_single | opus | profile ... 26s, 644w
+  solve_single | haiku | starlette ... 43s, 905w
+  solve_single | sonnet | starlette ... 104s, 1414w
+  solve_single | opus | starlette ... 86s, 1348w
+F-G5: --solve --pipe full
+  solve_full | haiku | profile ... 151s, 4566w
+  solve_full | sonnet | profile ... 285s, 8609w
+  solve_full | opus | profile ... 252s, 11660w
+--- GROUP 2: Infrastructure operations ---
+F-G6: --calibrate quick
+  calibrate_quick | haiku | starlette ... 8s, 42w
+  calibrate_quick | sonnet | starlette ... 6s, 39w
+F-G7: --calibrate deep
+  calibrate_deep | sonnet | starlette ... 1644s, 17878w
+  calibrate_deep | opus | starlette ... 643s, 1724w
+F-G8: --validate
+  Generating reference output for validation...
+  validate | haiku | starlette ... 83s, 1260w
+  validate | sonnet | starlette ... 50s, 1011w
+
+--- SCORING: haiku-as-judge ---
+  scan_target/haiku/profile: 1262w → score=1
+  scan_target/sonnet/profile: 1183w → score=1
+  scan_target/opus/profile: 1658w → score=5
+  scan_target/haiku/starlette: 1514w → score=500
+0
+  scan_target/sonnet/starlette: 1098w → score=13
+  scan_target/opus/starlette: 1550w → score=0
+  scan_3way/haiku/profile: 133w → score=0
+  scan_3way/sonnet/profile: 168w → score=1
+  scan_3way/opus/profile: 129w → score=0
+  scan_behavioral/haiku/starlette: 7154w → score=3
+  scan_behavioral/sonnet/starlette: 8656w → score=1
+  scan_behavioral/opus/starlette: 6966w → score=1
+  solve_single/haiku/profile: 648w → score=20
+  solve_single/sonnet/profile: 931w → score=20
+  solve_single/opus/profile: 644w → score=20
+  solve_single/haiku/starlette: 905w → score=0
+  solve_single/sonnet/starlette: 1414w → score=0
+  solve_single/opus/starlette: 1348w → score=0
+  solve_full/haiku/profile: 4566w → score=50
+  solve_full/sonnet/profile: 8609w → score=0
+  solve_full/opus/profile: 11660w → score=5
+  calibrate_quick/haiku/starlette: 42w → score=0
+  calibrate_quick/sonnet/starlette: 39w → score=0
+  calibrate_deep/sonnet/starlette: 17878w → score=5
+  calibrate_deep/opus/starlette: 1724w → score=35
+  validate/haiku/starlette: 1260w → score=0
+  validate/sonnet/starlette: 1011w → score=6
+
+=== SUMMARY ===
+Finished: Sun Mar 15 10:59:55 CET 2026
+
+SCORED RESULTS:
+operation,model,target,seconds,words,score
+0
+calibrate_deep,opus,starlette,643,1724,35
+calibrate_deep,sonnet,starlette,1644,17878,5
+calibrate_quick,haiku,starlette,8,42,0
+calibrate_quick,sonnet,starlette,6,39,0
+scan_3way,sonnet,profile,7,168,1
+scan_3way,haiku,profile,27,133,0
+scan_3way,opus,profile,7,129,0
+scan_behavioral,haiku,starlette,220,7154,3
+scan_behavioral,opus,starlette,345,6966,1
+scan_behavioral,sonnet,starlette,255,8656,1
+scan_target,opus,profile,79,1658,5
+scan_target,haiku,profile,68,1262,1
+scan_target,sonnet,profile,39,1183,1
+scan_target,haiku,starlette,54,1514,500
+scan_target,sonnet,starlette,33,1098,13
+scan_target,opus,starlette,48,1550,0
+solve_full,haiku,profile,151,4566,50
+solve_full,opus,profile,252,11660,5
+solve_full,sonnet,profile,285,8609,0
+solve_single,haiku,profile,66,648,20
+solve_single,opus,profile,26,644,20
+solve_single,sonnet,profile,35,931,20
+solve_single,haiku,starlette,43,905,0
+solve_single,opus,starlette,86,1348,0
+solve_single,sonnet,starlette,104,1414,0
+validate,sonnet,starlette,50,1011,6
+validate,haiku,starlette,83,1260,0
+
+Output directory: /tmp/model_gap
+Total files: 28

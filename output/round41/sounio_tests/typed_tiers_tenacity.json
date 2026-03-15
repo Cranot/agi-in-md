@@ -1,0 +1,202 @@
+```json
+[
+  {
+    "claim": "The retry loop implements control flow via type-tagged return values (DoAttempt, DoSleep) rather than state enums, creating a domain-specific control monad.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_182-191, source:lines_205-214",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The analysis would need to identify the actual control flow mechanism"
+  },
+  {
+    "claim": "IterState is stored in a ContextVar while statistics is stored in threading.local — this creates two independent state namespaces with different concurrency semantics.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_12, source:lines_83-84, source:lines_112-118",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "State management would be unified, simplifying the mental model"
+  },
+  {
+    "claim": "The action chain is built dynamically per-iteration by appending functions to a list, then executing them in sequence — this is a deferred-execution interpreter pattern.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_142-180",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Would indicate a different execution model (e.g., immediate vs deferred)"
+  },
+  {
+    "claim": "_first_set implements a two-level defaults cascade (parameter → instance attribute) enabling copy() to express only overrides.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_62-63, source:lines_70-84",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Configuration inheritance would work differently"
+  },
+  {
+    "claim": "RetrySignal is an Exception subclass used as a control signal, not an error — this creates an \"exception for control flow\" pattern that can be caught by overly broad except clauses.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_25-27, source:line_157",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The control flow safety profile changes"
+  },
+  {
+    "claim": "The statistics dictionary auto-clears when exceeding 100 keys, preventing unbounded memory growth but destroying historical data without warning.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_112-116",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Memory management assumptions change"
+  },
+  {
+    "claim": "AttemptManager.__exit__ swallows all exceptions by returning True when exc_type is not None, making it impossible for exceptions to propagate during the attempt context.",
+    "tier": "DERIVED",
+    "confidence": 0.95,
+    "provenance": "derivation:from_finding_1, source:lines_93-99",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Exception handling semantics would need re-analysis"
+  },
+  {
+    "claim": "The retry decision (self.retry) is only consulted when the outcome is not an explicit RetrySignal, creating a fast-path for TryAgain-style retries.",
+    "tier": "DERIVED",
+    "confidence": 0.95,
+    "provenance": "derivation:from_finding_5, source:lines_156-158",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The control flow optimization claim is wrong"
+  },
+  {
+    "claim": "NO_RESULT and _unset are distinct sentinel objects serving the same semantic purpose (absence of value) but in different domains (result vs configuration).",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "source:line_31, source:line_59",
+    "fill_source": null,
+    "falsifiable": false,
+    "impact_if_wrong": "Would indicate a different semantic structure"
+  },
+  {
+    "claim": "The iter() method executes actions via `for action in list(self.iter_state.actions)` — the list() copy prevents infinite loops if an action appends more actions, but only within a single iter() call.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_142-144",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Action execution semantics would be different"
+  },
+  {
+    "claim": "wraps() creates a fresh copy per invocation, isolating statistics per-call but sharing the wrapped function object across all calls.",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_source, source:lines_91-106",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Concurrency model would need re-analysis"
+  },
+  {
+    "claim": "Retrying.__call__ sets _iter_state_var at the start of each call, overwriting any existing state — nested retry decorators would corrupt each other's IterState.",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_finding_2, source:line_198",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Nested retry semantics would be safer than claimed"
+  },
+  {
+    "claim": "The control flow guarantees: (1) DoAttempt always yields AttemptManager, (2) DoSleep always calls prepare_for_next_attempt then sleep, (3) any other return breaks the loop.",
+    "tier": "MEASURED",
+    "confidence": 0.75,
+    "provenance": "source:lines_182-191, source:lines_205-214",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Core execution model would be misunderstood"
+  },
+  {
+    "claim": "Future.construct is a factory that bifurcates on has_exception, calling different setter methods on the same object — this is a two-path construction pattern.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_222-228",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Construction semantics would be different"
+  },
+  {
+    "claim": "The retry decorator supports both bare (@retry) and configured (@retry(stop=...)) forms via arity detection on dargs[0].",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_256-262",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Decorator usage pattern would be different"
+  },
+  {
+    "claim": "Conservation law: Flexibility × Explicitness = constant. The action chain pattern allows arbitrary extensibility (add any action) but obscures execution order (must trace appends).",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:from_findings_3,10",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The trade-off identified would not be fundamental"
+  },
+  {
+    "claim": "RetryCallState.idle_for is accumulated in two places: locally (rs.idle_for) and globally (self.statistics[\"idle_for\"]) — this dual-bookkeeping creates a synchronization surface.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_173-176",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Would indicate redundant state without synchronization concern"
+  },
+  {
+    "claim": "The before_sleep callback is added AFTER next_action is set but BEFORE DoSleep is returned — it can observe but not modify the upcoming sleep duration.",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_source, source:lines_172-178",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Callback timing semantics would be different"
+  },
+  {
+    "claim": "enabled=False bypasses all retry logic entirely, calling the wrapped function directly — this is an optimization path that skips copy() and state initialization.",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_91-93",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Disabled mode would have different behavior"
+  },
+  {
+    "claim": "reraise=True causes the original exception to be raised with the RetryError as __cause__, inverting the normal exception wrapping pattern.",
+    "tier": "DERIVED",
+    "confidence": 0.95,
+    "provenance": "source:lines_164-166",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Exception chaining semantics would be different"
+  },
+  {
+    "claim": "Extensibility × Observability = constant. The action-chain interpreter enables arbitrary extension points (before, after, before_sleep, retry, stop, wait, retry_error_callback) but each extension point obscures the execution trace — you must reconstruct the action list at runtime to understand what will happen.",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_findings_3,10,16",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "A design that allows both arbitrary extensibility AND static observability of execution order would refute this"
+  },
+  {
+    "claim": "Epistemic quality score: 12/20 = 60% STRUCTURAL (grounded in direct code reading).",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_claim_tier_counts",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The self-assessment of analytical rigor would be incorrect"
+  }
+]
+```

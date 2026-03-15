@@ -1,0 +1,12 @@
+knowledge_typed,starlette,0w,score=?
+knowledge_typed,tenacity,0w,score=?
+knowledge_typed,click,0w,score=?
+knowledge_audit,starlette,194w,score=?
+knowledge_boundary,click,826w,score=9
+knowledge_boundary,starlette,918w,score=9
+knowledge_audit,click,814w,score=6
+l12g,tenacity,710w,score=9
+l12g,click,1024w,score=8
+knowledge_audit,tenacity,803w,score=9
+knowledge_boundary,tenacity,1293w,score=10
+l12g,starlette,730w,score=7

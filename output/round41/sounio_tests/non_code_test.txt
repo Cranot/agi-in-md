@@ -1,0 +1,6 @@
+The quarterly board meeting revealed several strategic concerns. Revenue growth slowed to 12% YoY,
+down from 23% the previous quarter. The VP of Engineering presented a roadmap that included
+migrating to Kubernetes, but the CTO questioned whether the team had the expertise. Three senior
+engineers resigned last month citing burnout from the on-call rotation. The CFO proposed cutting
+the research budget by 40% to meet margin targets. Board members expressed concern about
+competitor X launching a similar product at half the price point.

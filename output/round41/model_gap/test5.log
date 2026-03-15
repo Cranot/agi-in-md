@@ -1,0 +1,4 @@
+=== solve_full quality comparison ===
+  solve_full/sonnet: 8609w, score=9
+  solve_full/opus: 11660w, score=7
+=== QUALITY COMPARISON DONE ===

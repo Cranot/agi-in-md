@@ -1,0 +1,216 @@
+
+============================================================
+  COMPARISON: real_code_starlette.py (333 lines)
+  Mode: prism
+============================================================
+
+============================================================
+  PIPELINE: Prism (Single Scan + 1 Fix Pass)
+============================================================
+
+  [1] Single Scan...
+      L12 output: 30543 chars, $0.1146
+
+  [2] Extracting issues...
+      TABLE SKIP #3: structural (NO)
+      Parsed bug table: 17 rows, 16 fixable
+      Extracted 16 issues from bug table (no API call)
+      Extracted 16 issues
+
+  [2/2] Fixing 16 issues (fixing)...
+    [1/16] #1: Shadowed inner app function confuses readers; outer
+      APPLIED (exact) | $0.0460
+    [2/16] #2: Returns PARTIAL when path matches but method doesn'
+      SKIP: return Match\.PARTIAL
+    [3/16] #4: NoMatchFound caught silently in loop; caller can't 
+      SKIP: except.*NoMatchFound
+    [4/16] #5: Method validation duplicated (path in matches, meth
+      APPLIED (exact) | $0.0586
+    [5/16] #6: Mutates path_params dict in-place; function name su
+      APPLIED (exact) | $0.0392
+    [6/16] #7: Uses assert for convertor validation; disabled with
+      APPLIED (exact) | $0.0419
+    [7/16] #8: Duplicated params error message is grammatically aw
+      APPLIED (indent-normalized) | $0.0265
+    [8/16] #9: Exception message conflates "name not found" with "
+      APPLIED (exact) | $0.0415
+    [9/16] #10: Treats lifespan scope as unroutable (sends WebSock
+      APPLIED (exact) | $0.0424
+    [10/16] #11: Assert is used instead of explicit raise; Python -
+      APPLIED (exact) | $0.0192
+    [11/16] #12: Potential infinite redirect loop if routes match o
+      APPLIED (exact) | $0.0477
+    [12/16] #13: Trailing slash silently stripped with .rstrip("/")
+      SKIP: class Mount|rstrip\(
+    [13/16] #14: Exponential recursion depth for deeply nested Moun
+      SKIP: class Mount
+    [14/16] #15: Infinite recursion possible if circular Mount nest
+      SKIP: class Mount
+    [15/16] #16: Assert for scope type validation; disableable with
+      APPLIED (exact) | $0.0345
+    [16/16] #17: Assumes self.methods is iterable for join; never v
+      APPLIED (indent-normalized) | $0.0734
+
+  After pass 1: 11/16 fixed
+
+  Result: 11/16 fixed, $0.7054
+
+============================================================
+  PIPELINE: Prism (Full Scan + Auto Fix 3-pass)
+============================================================
+
+  [1] Full Scan...
+      L12 output: 28626 chars, $0.0727
+      Adversarial challenge...
+      Adversarial output: 15442 chars, $0.1099
+      Synthesis...
+      Synthesis output: 11302 chars, $0.0672
+
+  [2] Extracting issues...
+      TABLE SKIP #A: structural (NOT LISTED)
+      TABLE SKIP #B: structural (NOT LISTED)
+      TABLE SKIP #C: structural (NOT LISTED)
+      TABLE SKIP #D: structural (NOT LISTED)
+      Parsed bug table: 34 rows, 30 fixable
+      Extracted 30 issues from bug table (no API call)
+      Extracted 30 issues
+
+  [2/2] Fixing 30 issues (pass 1)...
+    [1/30] #1: Missing OPTIONS support. The code enforces method c
+      APPLIED (indent-normalized) | $0.0193
+    [2/30] #2: PARTIAL match doesn't coordinate with redirect. The
+      SKIP: PARTIAL.*redirect|redirect.*method|def match|class
+    [3/30] #3: Mounted routes hide method constraints. A Mount com
+      SKIP: class Mount
+    [4/30] #4: url_path_for doesn't validate method context. You c
+      SKIP: def url_path_for
+    [5/30] #5: HEAD auto-addition is implicit. When methods includ
+      SKIP: def __init__.*methods|methods.*HEAD|if.*GET.*HEAD|
+    [6/30] #6: Exception doesn't report which constraint failed. W
+      SKIP: def url_path_for.*raise.*Error|def url_path_for.*R
+    [7/30] #7: Redirect doesn't account for method constraints dur
+      FAIL: invalid JSON
+    [8/30] #8: scope["router"] doesn't help with parent routes. Th
+      SKIP: class Mount|scope\["router"\]
+    [9/30] #9: Path parameters and endpoint parameter names can co
+      APPLIED (exact) | $0.0412
+    [10/30] #10: Host-based routing is compiled but never enforced.
+      APPLIED (exact) | $0.0457
+    [11/30] #11: Duplicate method validation. Route.matches() check
+      SKIP: grep -n "Match.PARTIAL.*method\|def handle.*method
+    [12/30] #12: Malformed convertor regex isn't validated at regis
+      APPLIED (indent-normalized) | $0.0232
+    [13/30] #13: Mount's "path" catch-all parameter is popped befor
+      SKIP: class Mount
+    [14/30] #14: PARTIAL match handling is only correct for methods
+      APPLIED (exact) | $0.0582
+    [15/30] #15: Redirect slashes feature silently changes semantic
+      APPLIED (exact) | $0.0400
+    [16/30] #1: Missing OPTIONS introspection
+      APPLIED (exact) | $0.0545
+    [17/30] #2: Redirect + method interaction
+      APPLIED (indent-normalized) | $0.0671
+    [18/30] #3: Mount hides constraints
+      APPLIED (exact) | $0.0440
+    [19/30] #4: url_path_for lacks method context
+      APPLIED (exact) | $0.0452
+    [20/30] #5: HEAD auto-addition implicit
+      SKIP: grep -n 'HEAD' real_code_starlette.py
+    [21/30] #6: Exception lacks failure reason
+      APPLIED (exact) | $0.0322
+    [22/30] #7: Redirect logic ambiguous
+      APPLIED (exact) | $0.0784
+    [23/30] #8: scope["router"] can't see parent
+      SKIP: scope\["router"\]
+    [24/30] #9: Parameter name conflicts undetected
+      APPLIED (exact) | $0.0827
+    [25/30] #10: Host-based routing dead code
+      APPLIED (indent-normalized) | $0.0192
+    [26/30] #11: Duplicate method checking
+      APPLIED (exact) | $0.0779
+    [27/30] #12: Convertor regex validation missing
+      APPLIED (exact) | $0.0671
+    [28/30] #13: Mount path parameter implicit
+      SKIP: class Mount
+    [29/30] #14: PARTIAL assumptions implicit
+      APPLIED (exact) | $0.0399
+    [30/30] #15: Redirect retransmits large bodies
+      APPLIED (indent-normalized) | $0.0534
+
+  After pass 1: 18/30 fixed
+
+  --- Pass 2: retrying 12 unfixed ---
+
+  [2/2] Fixing 12 issues (pass 2)...
+    [2/30] #2: PARTIAL match doesn't coordinate with redirect. The
+      SKIP: grep -n "PARTIAL.*redirect\|redirect_slashes\|if.*
+    [3/30] #3: Mounted routes hide method constraints. A Mount com
+      FAIL: syntax error after patch
+    [4/30] #4: url_path_for doesn't validate method context. You c
+      SKIP: def url_path_for
+    [5/30] #5: HEAD auto-addition is implicit. When methods includ
+      SKIP: class Route
+    [6/30] #6: Exception doesn't report which constraint failed. W
+      SKIP: class Router
+    [7/30] #7: Redirect doesn't account for method constraints dur
+      SKIP: path\.endswith.*Match|redirect.*Match\.FULL|def ma
+    [8/30] #8: scope["router"] doesn't help with parent routes. Th
+      SKIP: class Mount|scope\["router"\]\s*=\s*self
+    [11/30] #11: Duplicate method validation. Route.matches() check
+      SKIP: class Route.*def matches|class Route.*def handle
+    [13/30] #13: Mount's "path" catch-all parameter is popped befor
+      SKIP: class Mount
+    [20/30] #5: HEAD auto-addition implicit
+      SKIP: class Route|allowed_methods|GET.*HEAD
+    [23/30] #8: scope["router"] can't see parent
+      SKIP: scope\["router"\]\s*=
+    [28/30] #13: Mount path parameter implicit
+      APPLIED (exact) | $0.0912
+
+  After pass 2: 19/30 fixed
+
+  --- Pass 3: retrying 11 unfixed ---
+
+  [2/2] Fixing 11 issues (pass 3)...
+    [2/30] #2: PARTIAL match doesn't coordinate with redirect. The
+      SKIP: Match\.PARTIAL
+    [3/30] #3: Mounted routes hide method constraints. A Mount com
+      APPLIED (exact) | $0.0880
+    [4/30] #4: url_path_for doesn't validate method context. You c
+      SKIP: class Route.*def url_path_for|def url_path_for.*me
+    [5/30] #5: HEAD auto-addition is implicit. When methods includ
+      SKIP: if.*GET.*in.*methods|methods.*HEAD|_http_allowed|n
+    [6/30] #6: Exception doesn't report which constraint failed. W
+      SKIP: class Route.*def url_path_for|def url_path_for.*ra
+    [7/30] #7: Redirect doesn't account for method constraints dur
+      SKIP: class Router.*match|Router.*trailing|slash.*redire
+    [8/30] #8: scope["router"] doesn't help with parent routes. Th
+      APPLIED (exact) | $0.0465
+    [11/30] #11: Duplicate method validation. Route.matches() check
+      SKIP: def matches
+    [13/30] #13: Mount's "path" catch-all parameter is popped befor
+      SKIP: class Mount
+    [20/30] #5: HEAD auto-addition implicit
+      SKIP: class Route
+    [23/30] #8: scope["router"] can't see parent
+      SKIP: scope\[.router.\]\s*=
+
+  After pass 3: 21/30 fixed
+
+  Result: 21/30 fixed, $2.3478
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                     Prism Weakest   Prism Strongest
+  ──────────────────────────────────────────────────────────────────
+  Bugs found                                    16                30
+  Bugs fixed                                    11                21
+  Fix rate                                     69%               70%
+  Cost                           $          0.7054 $          2.3478
+  Time                                      719.5s           2576.3s
+
+  Results saved: ./output\comparison\compare_real_code_starlette_prism.json
+
+  Done!

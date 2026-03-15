@@ -1,0 +1,10 @@
+=== PAPER-CRITICAL TESTS ===
+--- PC-1: Go ---
+PC-1 Go: 686w
+--- PC-2: TypeScript ---
+PC-2 TS: 454w
+--- PC-3: Adversarial EVSI ---
+PC-3: L12=2829w, Adv=1761w
+--- PC-4: Signal detection ---
+PC-4: Vanilla=872w
+=== PAPER-CRITICAL TESTS DONE ===

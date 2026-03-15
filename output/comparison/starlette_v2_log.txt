@@ -1,0 +1,97 @@
+
+============================================================
+  COMPARISON: Prism (Haiku) vs Opus Vanilla
+  Target: real_code_starlette.py (333 lines)
+============================================================
+
+============================================================
+  PIPELINE A: Prism (Haiku + L12 -> editor lens fix)
+============================================================
+
+  [1/2] L12 structural scan...
+      L12 output: 23439 chars, $0.0716
+      Extracting issues via model call...
+      Extraction: $0.0587, 56.8s
+      Extracted 21 issues
+
+  [2/2] Fixing 21 issues with editor lens...
+    [1/21] CONVERTOR_TYPES undefined causes immediate crash
+      APPLIED (exact) | $0.0234
+    [2/21] Mount silently ignores HTTP method restrictions
+      APPLIED (exact) | $0.0781
+    [3/21] Allow header recomputed instead of cached from match re
+      APPLIED (indent-normalized) | $0.0669
+    [4/21] Method validation occurs after redirect_slashes logic
+      SKIP: if partial is not None|if self.redirect_slashes.*p
+    [5/21] Only first PARTIAL match stored, later path-matching ro
+      SKIP: partial_scope
+    [6/21] Path normalization inconsistent between Route and Mount
+      SKIP: class Route|class Mount
+    [7/21] url_path_for generates URLs without parameter validatio
+      SKIP: class Route.*def url_path_for.*path_format.format
+    [8/21] Endpoint type detection fragile for decorated functions
+      APPLIED (exact) | $0.0591
+    [9/21] Scope mutation not transactional, partial updates break
+      APPLIED (indent-normalized) | $0.0235
+    [10/21] Route only handles HTTP, WebSocket silently fails to ma
+      APPLIED (indent-normalized) | $0.0389
+    [11/21] Convertor regex patterns not validated, over-matching p
+      APPLIED (exact) | $0.0559
+    [12/21] Middleware modifying path after routing creates inconsi
+      APPLIED (indent-normalized) | $0.0567
+    [13/21] Regex metacharacters in custom convertor regex can caus
+      APPLIED (exact) | $0.0468
+    [14/21] HEAD method auto-added to Allow header when GET present
+      SKIP: methods.*append.*HEAD|methods.*add.*HEAD|if.*GET.*
+    [15/21] Allow header uses set join, iteration order undefined
+      SKIP: ', '.join\(.*\.methods\)|join\(.*\.methods
+    [16/21] NoMatchFound exception lacks route attempt details
+      FAIL: syntax error after patch
+    [17/21] Lifespan wrapping semantics may not preserve original b
+      SKIP: lifespan|AsyncGeneratorContextManager|async def.*l
+    [18/21] scope['method'] accessed without default, KeyError on r
+      SKIP: scope\['method'\]
+    [19/21] Mount.url_path_for ambiguous on nested mount name colli
+      SKIP: class Mount.*def url_path_for|Mount.*url_path_for.
+    [20/21] Unrecognized scope type returns 404 instead of raising 
+      APPLIED (indent-normalized) | $0.0730
+    [21/21] Percent-encoded character behavior depends on get_route
+      APPLIED (indent-normalized) | $0.0348
+
+  Result: 11/21 fixed, $1.0899
+
+============================================================
+  PIPELINE B: Opus Vanilla (single call, find + fix)
+============================================================
+
+  [1/1] Opus analysis + fix generation...
+      Opus output: 6837 chars, $0.4595
+      Found 5 issues with fix suggestions
+    [1/5] RFC 7231 Allow header violation: only first partial mat
+      APPLIED (exact) | P1
+    [2/5] Allow header has non-deterministic method ordering
+      APPLIED (exact) | P2
+    [3/5] compile_path silently drops port from host route regex
+      APPLIED (exact) | P1
+    [4/5] replace_params vulnerable to double-substitution inject
+      APPLIED (exact) | P2
+    [5/5] request_response inner function 'app' shadows outer fun
+      APPLIED (exact) | P2
+
+  Result: 5/5 fixed, $0.4595
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                   Prism (Haiku)    Opus Vanilla
+  ──────────────────────────────────────────────────────────────
+  Bugs found                                  21               5
+  Bugs fixed (applied+compiles)               11               5
+  Fix rate                                   52%            100%
+  Cost                           $       1.0899 $       0.4595
+  Time                                  1118.7s         350.9s
+
+  Results saved: ./output\comparison\compare_real_code_starlette.json
+
+  Done!

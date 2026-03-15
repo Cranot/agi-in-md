@@ -1,0 +1,205 @@
+
+============================================================
+  COMPARISON: real_code_starlette.py (333 lines)
+  Mode: full
+============================================================
+
+============================================================
+  PIPELINE B: Opus Vanilla (single call, find + fix)
+============================================================
+
+  [1/1] Opus analysis + fix generation...
+      Opus output: 6785 chars, $0.2832
+      Found 6 issues with fix suggestions
+    [1/6] RFC 7231 Allow header violation: only first partial rou
+      APPLIED (exact) | P1
+    [2/6] Unbound `response` variable in Route.handle if HTTPExce
+      APPLIED (exact) | P1
+    [3/6] Unbound `response` variable in Router.not_found if HTTP
+      APPLIED (exact) | P1
+    [4/6] Inner function `app` shadows outer function `app` in re
+      APPLIED (exact) | P2
+    [5/6] Non-deterministic Allow header due to set iteration
+      APPLIED (exact) | P2
+    [6/6] BaseRoute.__call__ silently ignores non-http/websocket 
+      APPLIED (exact) | P2
+
+  Result: 6/6 fixed, $0.2832
+
+============================================================
+  PIPELINE: Prism (Single Scan + 1 Fix Pass)
+============================================================
+
+  [1] Single Scan...
+      L12 output: 19210 chars, $0.0837
+
+  [2] Extracting issues...
+      Extracting issues via model call...
+      Extraction: $0.0704, 56.0s
+      Extracted 20 issues
+
+  [2/2] Fixing 20 issues (fixing)...
+    [1/20] Convertor exception produces 500 instead of 404
+      APPLIED (indent-normalized) | $0.0517
+    [2/20] Path parameter name collision in nested routes
+      FAIL: syntax error after patch
+    [3/20] Mount path remainder parsing off-by-one with trailing s
+      SKIP: class Mount
+    [4/20] Mount trailing slash stripping hides mount semantics
+      SKIP: class Mount
+    [5/20] Parameter convertors re-executed on route retry
+      APPLIED (indent-normalized) | $0.0453
+    [6/20] Match.PARTIAL doesn't encode failure reason
+      SKIP: return Match\.(NONE|PARTIAL|FULL)
+    [7/20] Partial match reason is lost in Router
+      SKIP: class Router|Match.PARTIAL|def.*match.*self|self.m
+    [8/20] Redirect_slashes mutates scope path inconsistently
+      SKIP: if self.redirect_slashes.*scope\[.path.\].*rstrip|
+    [9/20] Path assertion bypassed in optimized mode
+      APPLIED (exact) | $0.0415
+    [10/20] Scope parameter shadowing in closure
+      APPLIED (exact) | $0.0463
+    [11/20] root_path calculation assumes single Mount
+      SKIP: root_path|class Mount|def get_route_path|child_sco
+    [12/20] Silent scope method field mutation between phases
+      APPLIED (exact) | $0.0619
+    [13/20] Unknown convertor type assertion message unhelpful
+      APPLIED (exact) | $0.0618
+    [14/20] Duplicated parameter error lacks instance details
+      APPLIED (exact) | $0.0513
+    [15/20] Allow header iteration order non-canonical
+      SKIP: Allow.*405|status_code=405|response.*Allow|self\.m
+    [16/20] Mount silently ignores routes when app also provided
+      SKIP: grep -n -A 15 'class Mount' real_code_starlette.py
+    [17/20] Remaining path calculation lacks bounds checking
+      APPLIED (indent-normalized) | $0.0672
+    [18/20] Deprecation warning doesn't prevent execution
+      SKIP: warnings\.warn.*Deprecation
+    [19/20] NoMatchFound exception loses route search details
+      SKIP: raise NoMatchFound
+    [20/20] Redirect_slashes only applies to HTTP
+      FAIL: not found
+
+  After pass 1: 8/20 fixed
+
+  Result: 8/20 fixed, $1.0194
+
+============================================================
+  PIPELINE: Prism (Full Scan + Auto Fix 3-pass)
+============================================================
+
+  [1] Full Scan...
+      L12 output: 33008 chars, $0.0749
+      Adversarial challenge...
+      Adversarial output: 27096 chars, $0.1101
+      Synthesis...
+      Synthesis output: 16417 chars, $0.0678
+
+  [2] Extracting issues...
+      Extracting issues via model call...
+      Extraction: $0.0828, 67.7s
+      Extracted 16 issues
+
+  [2/2] Fixing 16 issues (pass 1)...
+    [1/16] Scope mutation before method validation completes
+      SKIP: class Route.*def matches\(self, scope\):.*def hand
+    [2/16] redirect_slashes can redirect to wrong route
+      SKIP: if.*self.redirect_slashes.*and.*partial.*for route
+    [3/16] PARTIAL enum is semantically overloaded
+      SKIP: return Match.PARTIAL
+    [4/16] PARTIAL handling depends on hidden Route.handle() re-va
+      APPLIED (exact) | $0.0351
+    [5/16] Mount's implicit 'path' parameter collides silently wit
+      FAIL: invalid JSON
+    [6/16] Method validation duplicated in two places
+      SKIP: if self\.methods and scope\["method"\]
+    [7/16] Convertor type validation uses unhandled assertion
+      APPLIED (exact) | $0.0283
+    [8/16] Mixed error handling patterns in compile_path
+      APPLIED (exact) | $0.0721
+    [9/16] 'path' parameter tracking inconsistency in Mount
+      SKIP: class Mount.*?def matches|matched_params.*(pop|del
+    [10/16] BaseRoute.__call__() doesn't handle Match.PARTIAL
+      APPLIED (exact) | $0.0677
+    [11/16] Convertor regex not validated before re.compile()
+      APPLIED (exact) | $0.0558
+    [12/16] Router doesn't validate scope["type"] before routing
+      SKIP: class Router
+    [13/16] functools.partial unwrapping stops early
+      SKIP: if isinstance.*functools\.partial
+    [14/16] Inner function shadows outer function name
+      APPLIED (exact) | $0.0398
+    [15/16] Mount.url_path_for() uses O(n) route lookup with no ind
+      SKIP: class Mount
+    [16/16] Mount doesn't explicitly handle lifespan scope type
+      SKIP: class Mount
+
+  After pass 1: 6/16 fixed
+
+  --- Pass 2: retrying 10 unfixed ---
+
+  [2/2] Fixing 10 issues (pass 2)...
+    [1/16] Scope mutation before method validation completes
+      SKIP: def matches\(self, scope\):.*?def handle\(self, sc
+    [2/16] redirect_slashes can redirect to wrong route
+      SKIP: grep -n -A 50 'partial = route' real_code_starlett
+    [3/16] PARTIAL enum is semantically overloaded
+      APPLIED (exact) | $0.0398
+    [5/16] Mount's implicit 'path' parameter collides silently wit
+      SKIP: class Mount
+    [6/16] Method validation duplicated in two places
+      SKIP: def matches|def handle
+    [9/16] 'path' parameter tracking inconsistency in Mount
+      SKIP: class Mount
+    [12/16] Router doesn't validate scope["type"] before routing
+      SKIP: class Router|def app\(self, scope
+    [13/16] functools.partial unwrapping stops early
+      SKIP: if isinstance.*functools.partial|while isinstance.
+    [15/16] Mount.url_path_for() uses O(n) route lookup with no ind
+      SKIP: class Mount.*def url_path_for
+    [16/16] Mount doesn't explicitly handle lifespan scope type
+      SKIP: class Mount
+
+  After pass 2: 7/16 fixed
+
+  --- Pass 3: retrying 9 unfixed ---
+
+  [2/2] Fixing 9 issues (pass 3)...
+    [1/16] Scope mutation before method validation completes
+      SKIP: def matches|scope\["endpoint"\]\s*=
+    [2/16] redirect_slashes can redirect to wrong route
+      SKIP: if self.redirect_slashes
+    [5/16] Mount's implicit 'path' parameter collides silently wit
+      SKIP: class Mount\(
+    [6/16] Method validation duplicated in two places
+      SKIP: grep -n "if self.methods and scope\[.method.\]" re
+    [9/16] 'path' parameter tracking inconsistency in Mount
+      APPLIED (exact) | $0.0507
+    [12/16] Router doesn't validate scope["type"] before routing
+      FAIL: invalid JSON
+    [13/16] functools.partial unwrapping stops early
+      SKIP: if isinstance.*functools\.partial
+    [15/16] Mount.url_path_for() uses O(n) route lookup with no ind
+      SKIP: class Mount
+    [16/16] Mount doesn't explicitly handle lifespan scope type
+      APPLIED (exact) | $0.0767
+
+  After pass 3: 9/16 fixed
+
+  Result: 9/16 fixed, $1.4350
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                      Opus Vanilla     Prism Weakest   Prism Strongest
+  ────────────────────────────────────────────────────────────────────────────────────
+  Bugs found                                     6                20                16
+  Bugs fixed                                     6                 8                 9
+  Fix rate                                    100%               40%               56%
+  Cost                           $          0.2832 $          1.0194 $          1.4350
+  Time                                      201.6s           1058.9s           1495.3s
+
+  Results saved: ./output\comparison\compare_real_code_starlette_full.json
+
+  Done!

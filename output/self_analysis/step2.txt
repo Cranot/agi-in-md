@@ -1,0 +1,348 @@
+# Conservation Law Analysis for prism.py
+
+## Step 1: The Conservation Law
+
+**Precision × Coverage × Cost = Constant**
+
+This system cannot simultaneously optimize:
+1. **Precision** — Depth and nuance of analysis (catching subtle bugs)
+2. **Coverage** — Number of domains/perspectives examined  
+3. **Cost** — API call time and expense
+
+**Evidence:**
+
+- **Lines 100-116**: `OPTIMAL_PRISM_MODEL` encodes explicit quality/cost trade-offs
+  ```python
+  OPTIMAL_PRISM_MODEL = {
+      "l12": "sonnet",      # Quality over cost
+      "deep_scan": "opus",  # Maximum precision
+      "ident": "sonnet",    # Balanced
+  }
+  ```
+
+- **Lines 3194-3212**: Model selection logic
+  ```python
+  # L12 optimal model: Sonnet (validated 9.3 avg vs Haiku 8.5)
+  if not model_override:
+      _opt_l12 = MODEL_MAP.get(OPTIMAL_PRISM_MODEL.get("l12", "sonnet"))
+  ```
+  The comment admits the trade-off: Haiku is faster but scores 8.5 vs Sonnet's 9.3
+
+- **Lines 3400-3430**: `_run_optimize_loop` implements convergence loops that deliberately trade cost for precision:
+  ```python
+  max_iterations = max_iterations or 5  # Higher = more precision, more cost
+  ```
+
+- **Lines 2980-3010**: Serial vs parallel mode in `review()`:
+  ```python
+  # Slower (2.7×) but catches recurring issues that parallel misses
+  if serial:
+      # Cross-file pattern detection
+  else:
+      # Parallel mode: original implementation (faster, misses cross-file patterns)
+  ```
+  Explicitly documents: "Slower (2.7×) but catches recurring issues"
+
+**The Conservation Law**: Every configuration choice must sacrifice one property. You can have fast+shallow (haiku single-pass), slow+deep (opus full pipeline), or medium+balanced (sonnet)—but not all three.
+
+---
+
+## Step 2: Information Laundering
+
+### 2.1 Exception Context Destruction
+
+**Location**: Lines 718-763, `_log_error()`
+
+```python
+def _log_error(context, error_type, error_msg, details=None, working_dir=None):
+    record = {
+        "timestamp": timestamp,
+        "context": context,
+        "error_type": error_type,
+        "error_msg": error_msg[:200] if error_msg else "",  # TRUNCATED
+        "details": details[:200] if details else "",        # TRUNCATED
+    }
+```
+
+**What's laundered:**
+- Full stack traces → only `error_type` string
+- Full error messages → first 200 characters
+- Local variables at crash → optional `details` parameter (often `None`)
+
+**Impact**: When debugging CLI format changes (the most fragile interface), you get "JSONDecodeError" with a snippet but no line number, no full malformed output, no call stack. The specific becomes generic.
+
+---
+
+### 2.2 Stream Parser Unknown Event Masking
+
+**Location**: Lines 1535-1551, `StreamParser.parse_line()`
+
+```python
+elif etype:
+    # Unknown event type — log for diagnosing CLI format changes.
+    _log_error(
+        context="stream:unknown_event_type",
+        error_type="UnknownEventType",
+        error_msg=etype,
+        details=line[:200]  # Only first 200 chars
+    )
+    events.append(("unknown", {"type": etype, "raw": event}))
+```
+
+**What's laundered:**
+- Full event structure → just `"unknown"` label
+- Specific new field names → lost to truncation
+- Event frequency/sequence → only single logged line
+
+**Impact**: When Anthropic adds new event types (e.g., `content_block_delta`), the system silently logs a 200-char snippet but returns `"unknown"` to callers. Downstream code can't adapt to new formats because the distinguishing features are erased.
+
+---
+
+### 2.3 Silent Pragma Failure
+
+**Location**: Lines 26-44, Windows ANSI setup
+
+```python
+try:
+    import colorama
+    colorama.init(autoreset=False)
+except ImportError:
+    # Fallback to ctypes if colorama not available
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    # ... ctypes setup ...
+except Exception:
+    # ANSI setup failed: gracefully disable ANSI codes
+    ANSI_SUPPORTED = False
+```
+
+**What's laundered:**
+- Specific failure reason → just `ANSI_SUPPORTED = False`
+- Which Windows version lacks support → unknown
+- Whether it's CI, WSL, or Windows 11 → indistinguishable
+
+**Impact**: On Windows 11 without ANSI, all color codes become empty strings (Lines 332-339). The user sees plain output but gets no diagnostic explaining *why* colors are missing. The failure mode is generic ("ANSI not supported") when the specific cause could be actionable (e.g., "install colorama for better output").
+
+---
+
+### 2.4 Module Reload Race Detection Lost
+
+**Location**: Lines 2407-2436, `_cmd_reload()`
+
+```python
+def _cmd_reload(self):
+    try:
+        spec = importlib.util.spec_from_file_location("_prism_reload", SCRIPT_DIR / "prism.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        # ...
+        self.__class__ = mod.PrismREPL  # DANGEROUS
+    except Exception as e:
+        print(f"  {C.RED}Reload failed: {e}{C.RESET}")
+```
+
+**What's laundered:**
+- Full stack trace of reload failure → just `str(e)`
+- Which specific class definition failed → lost
+- Whether partial reload succeeded → binary fail/ok
+
+**Impact**: If reload partially fails (some methods loaded, others not), the exception message might be "undefined symbol 'X'" but won't show *which* methods are in an inconsistent state. The specific state corruption is masked behind a generic error string.
+
+---
+
+## Step 3: Structural Bugs
+
+### 3A. Async State Handoff Violation
+
+**Location**: Lines 2477-2511, `review()` parallel mode
+
+```python
+if not serial:
+    all_results = {}
+    sem = threading.Semaphore(5)
+    lock = threading.Lock()  # <-- SHARED LOCK FOR EVERYTHING
+    total = len(files) * len(prisms)
+    done = [0]
+
+    def run_one(fpath, prism):
+        try:
+            content = fpath.read_text(...)
+            result = self._run_prism_oneshot(prism, content, fpath.name)
+        except Exception:
+            result = ""
+            error_count[0] += 1  # <-- RACE: unprotected list access
+        with lock:
+            all_results[(str(fpath), prism)] = result  # <-- RACE: unprotected dict
+            done[0] += 1  # <-- RACE: unprotected list
+```
+
+**The Bug:**
+
+1. **Line 2490**: `error_count[0] += 1` modifies `list` element without lock
+   - Multiple threads can read-modify-write simultaneously
+   - Lost updates: final count < actual crashes
+
+2. **Line 2492**: `all_results[(str(fpath), prism)] = result` shares dict
+   - One thread reading `all_results.keys()` while another writes
+   - Python dict resize can corrupt in-progress iteration
+
+3. **Lines 2527-2542**: Threads started without joining lock
+   ```python
+   for t in threads:
+       t.join()
+   # But what if Ctrl-C hits during join()? 
+   # Threads orphaned with lock held → deadlock on next /scan
+   ```
+
+**Why it's structural**: The lock protects multiple unrelated resources (dict, list, counter). To fix properly, you need separate locks per resource — but the code couples them because they share a `with lock:` block for simplicity. The bug is in the *structure* of the synchronization, not a missing lock statement.
+
+**Reproduction**: Run `/scan src/` on large project with 100+ files. Press Ctrl-C mid-scan. Next `/scan` may hang because orphaned thread holds `lock`.
+
+---
+
+### 3B. Priority Inversion in Search
+
+**Location**: Lines 2040-2094, `_detect_file_mentions()`
+
+```python
+def _detect_file_mentions(self, user_input):
+    matches = self._FILE_RE.findall(user_input)
+    # ...
+    for mention in filtered_matches:
+        candidate = self.working_dir / mention
+        if candidate.is_file():  # <-- FIRST MATCH WINS
+            real = candidate.resolve()
+            resolved.append(real)
+            if len(resolved) >= 3:
+                break  # <-- STOP AFTER 3
+        else:
+            # Fuzzy match as fallback
+            try:
+                actual_files = [f.name for f in self.working_dir.glob("*")]
+                best_match = max(
+                    ((f, difflib.SequenceMatcher(None, mention, f).ratio())
+                     for f in actual_files),
+                    key=lambda x: x[1],
+                    default=(None, 0)
+                )
+                if best_match[1] > 0.9:
+                    resolved.append(fuzzy_candidate)
+                    if len(resolved) >= 3:
+                        break  # <-- STOP AFTER 3 FUZZY MATCHES
+```
+
+**The Bug:**
+
+1. User says: "check auth.py and also look at runner.py if relevant"
+
+2. Code finds `auth.py` match → adds to resolved ✓
+3. Code finds `runner.py` doesn't exist → does fuzzy match
+4. Fuzzy match finds `runnertest.py` with 92% similarity → adds to resolved
+5. **STOP** (hit cap of 3)
+6. User mentioned `config.py` which exists → never checked
+
+**Priority Inversion**: The "first 3 matches" heuristic prioritizes *early* mention order over *relevance*. If user mentions 5 files but only first 3 exist, the code wastes slots on fuzzy matches instead of checking later *real* files.
+
+**Why it's structural**: The O(n) file existence check is correct, but the `break` statement creates a cache-based optimization that destroys completeness. The O(n) cost is moved from "check all mentions" to "user must type `/scan` again for missed files."
+
+**Evidence in code:**
+- Line 2075: `if len(resolved) >= 3: break` — early exit
+- Line 2090: Same break in fuzzy branch
+- Comment at line 2076 admits it: `"auto-read capped at 3 files"`
+
+---
+
+### 3C. Edge Case in Composition
+
+**Location**: Lines 3637-3654, `_parse_scan_args()`
+
+```python
+def _parse_scan_args(arg):
+    if not arg:
+        return result  # {"mode": "single", "arg": arg}
+    # ...
+    nuclear_match = _alias('nuclear', arg)
+    if nuclear_match:
+        result["mode"] = "discover_expand"
+        result["discover_type"] = "full"
+        result["expand_indices"] = "*"
+        result["expand_mode"] = "full"
+        result["model_override"] = "opus"
+        result["arg"] = arg[:nuclear_match.start()].strip() or None  # <-- EDGE CASE
+        return result
+```
+
+**The Bug:**
+
+User types: `/scan nuclear_config.py`
+
+1. `_alias('nuclear', "nuclear_config.py")` matches! (uses `\b` word boundary)
+2. Sets mode to `"discover_expand"`, model to `"opus"`
+3. `result["arg"] = arg[:nuclear_match.start()].strip() or None`
+   - `nuclear_match.start()` = 0 (match at start)
+   - `arg[:0]` = `""`
+   - `"".strip() or None` = `None`
+4. Returns `{"mode": "discover_expand", "arg": None, ...}`
+
+**Later at line 3249:**
+```python
+if not arg:
+    print(f"{C.YELLOW}Usage: /scan <file|dir|text> ...")
+    return
+```
+
+**Result**: User gets "Usage:" error even though they provided a valid filename `nuclear_config.py`.
+
+**Root cause**: String slicing `arg[:0]` returns empty string, which falsy-coerces to `None`. The code assumes strip() will never return empty, but it can when slicing at position 0.
+
+**Structural nature**: The bug emerges from composition of three operations:
+1. Regex match (finds `'nuclear'` in `'nuclear_config.py'`)
+2. String slicing (`arg[:match.start()]`)
+3. Falsy coercion (`or None`)
+
+Each operation is correct individually. The bug is in their *composition* when `match.start() == 0`.
+
+---
+
+### 3C-Additional: Empty String in Path Join
+
+**Location**: Lines 1762-1774, `_resolve_file()`
+
+```python
+def _resolve_file(self, arg):
+    if not arg:
+        return None
+    path = pathlib.Path(arg)
+    if not path.is_absolute():
+        path = self.working_dir / path  # <-- EDGE CASE
+    return path if path.exists() else None
+```
+
+**The Bug:**
+
+If `arg = ""` (empty string):
+1. Line 1764: `if not arg:` → catches and returns `None` ✓
+
+But if called internally with `arg = pathlib.Path("")`:
+1. Line 1764 check passes (Path object is truthy even if empty)
+2. Line 1766: `path.is_absolute()` → `False` for empty path
+3. Line 1767: `path = self.working_dir / path` 
+   - In Python: `Path("/home/user") / Path("")` → `Path("/home/user")`
+   - This works, BUT what if `working_dir` is empty? (e.g., initialized as `Path("")`)
+
+**The actual danger**: If `self.working_dir` is ever `Path("")` (shouldn't happen, but no invariant check), then `Path("") / Path("file.py")` → `Path("file.py")` instead of expected absolute path.
+
+**Why it's structural**: No validation that `working_dir` is non-empty before using it as path prefix. The empty path case is handled for `arg` but not for `self.working_dir`.
+
+---
+
+## Summary
+
+| Pattern | Location | Impact | Trace |
+|---------|----------|--------|-------|
+| **Async State Handoff** | `review()` lines 2477-2542 | Race on dict/list, lost crash counts, deadlock on Ctrl-C | `all_results[]` write without lock, `error_count[0] += 1` unsafe |
+| **Priority Inversion** | `_detect_file_mentions()` lines 2040-2094 | Misses files mentioned after first 3, fuzzy matches beat real files | `break` after 3 resolved stops checking remaining mentions |
+| **Edge Case Composition** | `_parse_scan_args()` line 3649 | `nuclear_config.py` treated as mode keyword, not filename | `arg[:0].strip() or None` → `None` when match at position 0 |
+| **Information Laundering** | `_log_error()` lines 718-763 | 200-char limit hides stack traces, full error context | `error_msg[:200]` truncates diagnostic details |
+
+The conserved quantity is **Precision × Coverage × Cost**. The information laundering (error truncation, unknown event masking) is the tax paid for maintaining this conservation law—detailed diagnostics would require additional I/O that increases Cost, breaking the equilibrium.

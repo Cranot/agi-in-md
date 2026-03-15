@@ -1,0 +1,92 @@
+{
+  "target": "real_code_tenacity.py",
+  "lines": 331,
+  "mode": "single",
+  "timestamp": "2026-03-04T16:52:42",
+  "prism_weakest": {
+    "bugs_found": 13,
+    "bugs_fixed": 12,
+    "cost": 1.12249135,
+    "duration_ms": 1265429,
+    "issues": [
+      {
+        "title": "#1: Not thread-safe",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Shared function attributes must not be mutated by concurrent threads without synchronization"
+      },
+      {
+        "title": "#2: Loses retry context",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Context manager __enter__ must return retry_state to expose retry context to callers"
+      },
+      {
+        "title": "#3: Concurrent iterations corrupt state",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Each Retrying instance must maintain isolated thread-local state; copies must not share statistics references across concurrent execution contexts"
+      },
+      {
+        "title": "#4: Returns None prematurely",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "When retry is not needed, the method must return the actual result immediately instead of returning None with a deferred unconsumed action"
+      },
+      {
+        "title": "#5: Doesn't preserve statistics/iter_state",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#6: statistics attribute is non-atomic",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "The statistics property must initialize atomically without a TOCTOU check-then-use race condition."
+      },
+      {
+        "title": "#7: Suppresses exceptions silently",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Exception must be raised after stop condition even when retry_error_callback is set, preventing silent suppression"
+      },
+      {
+        "title": "#8: Clears outcome while actions reference it",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Action references must be cleared before clearing data they reference"
+      },
+      {
+        "title": "#9: Sets upcoming_sleep to None",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "upcoming_sleep must never be None; it must be a numeric value (defaulting to 0.0 if the wait function returns None)."
+      },
+      {
+        "title": "#10: Return values are ignored",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Functions that construct action objects must return them instead of implicitly returning None."
+      },
+      {
+        "title": "#11: Closures might capture stale state",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Closures must capture references at creation time via default arguments, not at execution time, to prevent stale state access."
+      },
+      {
+        "title": "#12: retry=None causes AttributeError",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Callable must not be invoked without None-checking"
+      },
+      {
+        "title": "#13: No type validation",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Type validation must occur before subscript access to prevent AttributeError or IndexError on exc_info"
+      }
+    ],
+    "analysis_length": 25512
+  }
+}

@@ -1,0 +1,148 @@
+```json
+[
+  {
+    "claim": "asyncio.RWLock provides read-write locking for the proposed cache solution",
+    "type": "CONFABULATED",
+    "fill_source": "API_DOCS",
+    "query": "Does asyncio.RWLock exist in Python 3.12 stdlib?",
+    "risk": "HIGH",
+    "impact": "The proposed cache-based improvement is non-functional; entire architectural recommendation in Section II is undermined",
+    "confidence": 0.2
+  },
+  {
+    "claim": "The design assumes routes are configured once at startup",
+    "type": "CONTEXTUAL",
+    "fill_source": "COMMUNITY",
+    "query": "Is dynamic route mutation intended or discouraged in Starlette's design philosophy?",
+    "risk": "HIGH",
+    "impact": "If wrong, the cache invalidation problem is a real bug rather than a philosophy trade-off; reframes all structural issues as fixable defects",
+    "confidence": 0.5
+  },
+  {
+    "claim": "This is sensible for most applications (O(n) routing acceptable)",
+    "type": "ASSUMED",
+    "fill_source": "MARKET",
+    "query": "What are typical route counts in production Starlette applications?",
+    "risk": "MEDIUM",
+    "impact": "If wrong, Starlette's design is a performance defect for typical users; inverts the 'sensible trade-off' narrative",
+    "confidence": 0.4
+  },
+  {
+    "claim": "Line numbers: compile_path (51-76), Mount (120-195), Router.app (192-220)",
+    "type": "TEMPORAL",
+    "fill_source": "CHANGELOG",
+    "query": "Which Starlette version has compile_path at lines 51-76 and Mount at 120-195?",
+    "risk": "MEDIUM",
+    "impact": "All specific defect locations become unverifiable; cannot validate or reproduce findings",
+    "confidence": 0.3
+  },
+  {
+    "claim": "redirect_slashes=True is the default behavior",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "What is the default value of redirect_slashes in Router.__init__?",
+    "risk": "LOW",
+    "impact": "The double-scan behavior may not apply to default-configured routers",
+    "confidence": 0.7
+  },
+  {
+    "claim": "Redirect behavior is 'quadratic' (O(n) + O(n))",
+    "type": "CONFABULATED",
+    "fill_source": "BENCHMARK",
+    "query": "Does the redirect path show O(n) or O(n²) scaling with route count?",
+    "risk": "MEDIUM",
+    "impact": "Mathematical claim is wrong; O(n) + O(n) = O(n), not quadratic; undermines complexity analysis credibility",
+    "confidence": 0.3
+  },
+  {
+    "claim": "No freeze/lock API exists after route registration",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "Does Starlette provide Router.freeze() or any route-locking mechanism?",
+    "risk": "MEDIUM",
+    "impact": "If a freeze API exists, the mutability-based caching problem has an official solution",
+    "confidence": 0.5
+  },
+  {
+    "claim": "First match wins when nested mounts use name=None with identical route names",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "What is the search order and collision behavior in Mount.url_path_for?",
+    "risk": "LOW",
+    "impact": "Collision behavior description may be incorrect if search order differs",
+    "confidence": 0.6
+  },
+  {
+    "claim": "root_path mutation logic is duplicated in Mount.matches and Route.matches",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "Does Route.matches contain similar root_path construction logic to Mount.matches?",
+    "risk": "LOW",
+    "impact": "Code duplication claim would be incorrect if Route uses different mechanism",
+    "confidence": 0.6
+  },
+  {
+    "claim": "Starlette deliberately avoids trie/radix tree optimization",
+    "type": "ASSUMED",
+    "fill_source": "COMMUNITY",
+    "query": "Have maintainers discussed and rejected trie-based routing in GitHub issues?",
+    "risk": "MEDIUM",
+    "impact": "Intent ascription may be wrong; O(n) could be incidental rather than deliberate",
+    "confidence": 0.4
+  },
+  {
+    "claim": "Developer ergonomics > runtime efficiency is the design philosophy",
+    "type": "ASSUMED",
+    "fill_source": "COMMUNITY",
+    "query": "Have Starlette maintainers stated this prioritization in documentation or discussions?",
+    "risk": "LOW",
+    "impact": "Interpretive framework may misrepresent actual design intent",
+    "confidence": 0.4
+  },
+  {
+    "claim": "Cache invalidation is impossible with lazy properties",
+    "type": "ASSUMED",
+    "fill_source": "BENCHMARK",
+    "query": "Could alternative cache invalidation strategies work with lazy property patterns?",
+    "risk": "MEDIUM",
+    "impact": "If alternatives exist, the tension between cache consistency and lazy properties is a false dilemma",
+    "confidence": 0.5
+  },
+  {
+    "claim": "Current param_convertors registry (str, path, int, float, uuid)",
+    "type": "TEMPORAL",
+    "fill_source": "API_DOCS",
+    "query": "What are the current built-in param_convertors in the latest Starlette version?",
+    "risk": "LOW",
+    "impact": "Registry may have changed; new convertors may exist or old ones deprecated",
+    "confidence": 0.7
+  },
+  {
+    "claim": "Mount(\"/api/{version}\", routes=[...]) becomes /api/v1/users when matched",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "How does path parameter substitution work in nested Mount routes?",
+    "risk": "LOW",
+    "impact": "Example conflates route definition with matching; documentation may be misleading",
+    "confidence": 0.6
+  },
+  {
+    "claim": "Middleware wrapping happens per-route, not per-dispatch",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "When is middleware applied in Starlette's request lifecycle?",
+    "risk": "MEDIUM",
+    "impact": "If wrong, middleware-related performance assumptions are incorrect",
+    "confidence": 0.5
+  },
+  {
+    "claim": "re.compile() raises re.error on malformed path patterns",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "Does Python's re.compile raise re.error for invalid regex patterns?",
+    "risk": "LOW",
+    "impact": "Error handling claim is correct; Python stdlib behavior is stable",
+    "confidence": 0.95
+  }
+]
+```

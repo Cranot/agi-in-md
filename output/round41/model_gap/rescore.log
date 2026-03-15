@@ -1,0 +1,56 @@
+  scan_target/haiku/profile: 1262w -> score=8
+  scan_target/sonnet/profile: 1183w -> score=9
+  scan_target/opus/profile: 1658w -> score=8
+  scan_target/haiku/starlette: 1514w -> score=10
+  scan_target/sonnet/starlette: 1098w -> score=10
+  scan_target/opus/starlette: 1550w -> score=10
+  scan_3way/haiku/profile: 133w -> score=8
+  scan_3way/sonnet/profile: 168w -> score=6
+  scan_3way/opus/profile: 129w -> score=1
+  scan_behavioral/haiku/starlette: 7154w -> score=7
+  scan_behavioral/sonnet/starlette: 8656w -> score=9
+  scan_behavioral/opus/starlette: 6966w -> score=7
+  solve_single/haiku/profile: 648w -> score=8
+  solve_single/sonnet/profile: 931w -> score=8
+  solve_single/opus/profile: 644w -> score=9
+  solve_single/haiku/starlette: 905w -> score=9
+  solve_single/sonnet/starlette: 1414w -> score=9
+  solve_single/opus/starlette: 1348w -> score=9
+  solve_full/haiku/profile: 4566w -> score=6
+  solve_full/sonnet/profile: 8609w -> score=9
+  solve_full/opus/profile: 11660w -> score=8
+  calibrate_quick/haiku/starlette: 42w -> score=6
+  calibrate_quick/sonnet/starlette: 39w -> score=6
+  calibrate_deep/sonnet/starlette: 17878w -> score=10
+  calibrate_deep/opus/starlette: 1724w -> score=7
+  validate/haiku/starlette: 1260w -> score=9
+  validate/sonnet/starlette: 1011w -> score=8
+=== RESCORING COMPLETE ===
+operation,model,target,seconds,words,score
+scan_target,haiku,profile,68,1262,8
+scan_target,sonnet,profile,39,1183,9
+scan_target,opus,profile,79,1658,8
+scan_target,haiku,starlette,54,1514,10
+scan_target,sonnet,starlette,33,1098,10
+scan_target,opus,starlette,48,1550,10
+scan_3way,haiku,profile,27,133,8
+scan_3way,sonnet,profile,7,168,6
+scan_3way,opus,profile,7,129,1
+scan_behavioral,haiku,starlette,220,7154,7
+scan_behavioral,sonnet,starlette,255,8656,9
+scan_behavioral,opus,starlette,345,6966,7
+solve_single,haiku,profile,66,648,8
+solve_single,sonnet,profile,35,931,8
+solve_single,opus,profile,26,644,9
+solve_single,haiku,starlette,43,905,9
+solve_single,sonnet,starlette,104,1414,9
+solve_single,opus,starlette,86,1348,9
+solve_full,haiku,profile,151,4566,6
+solve_full,sonnet,profile,285,8609,9
+solve_full,opus,profile,252,11660,8
+calibrate_quick,haiku,starlette,8,42,6
+calibrate_quick,sonnet,starlette,6,39,6
+calibrate_deep,sonnet,starlette,1644,17878,10
+calibrate_deep,opus,starlette,643,1724,7
+validate,haiku,starlette,83,1260,9
+validate,sonnet,starlette,50,1011,8

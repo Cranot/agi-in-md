@@ -1,0 +1,2 @@
+# Structure First (Level 6 Candidate B: Orthogonal Prediction)
+Predict the single most important thing that three arguing experts will fail to notice about this code. Then: three independent experts who fundamentally disagree analyze it — one sees strengths, one sees failure modes, one sees what both miss. Let them argue. Finally: did they miss what you predicted? If yes, why was it invisible to all three frames? If no, which expert found it, and what does that reveal about your predictive blind spot?

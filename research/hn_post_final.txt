@@ -1,0 +1,25 @@
+TITLE: Show HN: We put gibberish in an LLM prompt and got 10/10 quality outputs
+
+URL: (leave blank)
+
+TEXT:
+
+I replaced every content word in a 332-word analysis prompt with nonsense ("glorpnax," "blorpwhistle") and kept the format. Same imperative structure, numbered steps, output requirements. It scored 10/10 on structural code analysis. The original prompt scored 9.
+
+This was surprising enough to run 40 more rounds of controlled experiments.
+
+The main finding: Claude Haiku 4.5 at minimum reasoning + the right 332-word prompt: 9.8/10 depth, 28 issues found on production code (Starlette routing.py, 333 lines). Opus 4.6 at maximum reasoning, no prompt: 7.3/10, 18 issues. Same code, same scoring rubric, separate judge pass. 5x cheaper.
+
+Variables held constant: model fixed across prompt/no-prompt comparisons, code fixed across model comparisons, scores from separate judge (not self-report). Raw outputs for every experiment in the repo.
+
+Important caveat: the scoring rubric measures structural format — conservation laws, trilemmas, classified defects. The scrambled result scoring 10 means the rubric tracks format compliance, not factual correctness. That's itself interesting: models can be steered to produce structured analytical output through format alone, independent of vocabulary. But it means the 9.8/10 measures "did the model produce structural analysis" not "is every claim true."
+
+We address this with epistemic typing. Models state confabulated API names and verified structural patterns with equal confidence. L12-G runs analyze, audit, self-correct in one call. N=10 on production code: 9/10 runs = zero confabulation in final output. Claims are typed by epistemic status (STRUCTURAL / DERIVED / KNOWLEDGE / ASSUMED) so you know what to trust.
+
+What it is: Prism — a CLI for structural code analysis through cognitive prisms. 48 prisms, 12 scan modes. Validated on Python, Go, TypeScript. MIT licensed.
+
+    python prism.py --scan your_file.py
+
+One scan, ~20 seconds, ~$0.003 on Haiku. It derives a conservation law specific to your code's structure.
+
+41 rounds, 1000+ experiments, 217 principles, full experiment logs: https://github.com/Cranot/agi-in-md

@@ -1,0 +1,349 @@
+[36mL12 structural analysis (sonnet)[0m
+[1m[34m── l12 ── real_code_starlette.py ──[0m
+[2mthinking...[0m                                        # Structure First (Level 12: Meta-Conservation Law)
+
+Execute every step below. Output the complete analysis.
+
+## Step 1: Initial Claim
+
+**Claim:** Starlette's routing system suffers from **bidirectional coupling between matching and URL generation** — the same regex-based path compilation mechanism serves both incoming request dispatch and outgoing URL construction, making it impossible to optimize one direction without degrading the other.
+
+## Step 2: Three Independent Experts
+
+**Expert A (Defender):** The bidirectional design is intentional and elegant. URL generation (`url_path_for`) must be consistent with request matching. Using the same compiled path format ensures that `{id}` in route definition means the same thing in both directions. Decoupling would require two separate path DSLs that could drift apart, introducing subtle bugs where generated URLs don't match any route.
+
+**Expert B (Attacker):** This conflates two fundamentally different operations with different constraints. Request matching needs *fast prefix matching* and *early rejection* — it should fail fast on non-matching routes. URL generation needs *complete parameter validation* and *formatting* — it must ensure all required params are present. The current implementation forces URL generation to iterate through all routes searching for matches, which is O(n) in route count. This scales poorly for large applications.
+
+**Expert C (Probing Assumptions):** Both experts assume "matching" and "generation" are the only two operations. But ASGI routing has a third: **scope transformation**. When a Mount matches, it doesn't just match — it *rewrites* `root_path` and `path`. The current code embeds scope transformation logic inside the matching decision. The real problem isn't bidirectional coupling; it's that scope transformation, matching, and generation are all entangled in the same `matches()` method.
+
+## Step 3: Transformed Claim
+
+**Original claim:** Bidirectional coupling between matching and URL generation is the problem.
+
+**Transformed claim:** Starlette routing conflates **three distinct operations** — scope transformation, request matching, and URL generation — into a single unified interface, making it impossible to reason about any one operation in isolation.
+
+**The gap:** Expert A and B debated coupling between matching and generation. Expert C revealed a third operation (scope transformation) that both took for granted. The real problem is *triple* entanglement, not dual coupling.
+
+## Step 4: Concealment Mechanism
+
+**Name:** **Progressive Commitment Hiding**
+
+The code hides its structural problem by committing to decisions incrementally. Each method (`matches()`, `url_path_for()`, `handle()`) appears to do one thing, but each actually performs partial work for multiple operations:
+- `matches()` transforms scope AND decides match quality
+- `url_path_for()` transforms params AND validates existence
+- `__call__` on BaseRoute dispatches AND renders 404s
+
+The concealment works because no single line looks wrong. The problem only appears when you trace *what information is available when* across the call stack.
+
+## Step 5: Apply Concealment Mechanism
+
+Where does progressive commitment hide bugs?
+
+**Location:** `Router.app()` lines 162-184 (the matching loop)
+
+```python
+partial = None
+for route in self.routes:
+    match, child_scope = route.matches(scope)
+    if match is Match.FULL:
+        scope.update(child_scope)
+        await route.handle(scope, receive, send)
+        return
+    elif match is Match.PARTIAL and partial is None:
+        partial = route
+        partial_scope = child_scope
+```
+
+**What's concealed:** The `partial` variable commits to the first PARTIAL match, but PARTIAL means "path matches but wrong HTTP method." This has a silent consequence: if route A is `/api/{id}` (method GET) and route B is `/api/users` (method POST), and route A appears first in the list, a POST to `/api/users` will match PARTIAL on route A (because `/api/users` matches the path regex `/api/{id}`) and never try route B. The error "405 Method Not Allowed" will be rendered by route A's handler, not the router. This is **correct behavior** but it's achieved through a side channel (the PARTIAL state) rather than explicit method routing.
+
+## Step 6: Engineer Concealment-Deepening Improvement
+
+**Legitimate-looking improvement:** Add method-based routing table to O(n) matching
+
+```python
+class Router:
+    def __init__(self, routes=None, redirect_slashes=True, default=None,
+                 lifespan=None, *, middleware=None):
+        self.routes = [] if routes is None else list(routes)
+        # NEW: Index routes by HTTP method for faster lookup
+        self._method_index = {}  # {method: [routes]}
+        self._build_method_index()
+        # ... rest of init
+        
+    def _build_method_index(self):
+        """Build index mapping HTTP methods to routes that accept them."""
+        self._method_index = {}
+        for route in self.routes:
+            if isinstance(route, Route):
+                for method in route.methods:
+                    self._method_index.setdefault(method, []).append(route)
+            else:  # Mount matches all methods
+                for method in ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]:
+                    self._method_index.setdefault(method, []).append(route)
+    
+    async def app(self, scope, receive, send):
+        assert scope["type"] in ("http", "websocket", "lifespan")
+        if scope["type"] in ("http", "websocket"):
+            if scope["type"] == "http":
+                # NEW: Only check routes with matching method
+                method = scope["method"]
+                candidate_routes = self._method_index.get(method, [])
+                candidate_routes.extend(self._method_index.get(None, []))  # method-agnostic routes
+            else:
+                candidate_routes = self.routes
+                
+            partial = None
+            for route in candidate_routes:
+                match, child_scope = route.matches(scope)
+                # ... rest of logic unchanged
+```
+
+**Why this passes code review:**
+- Performance optimization: skip method-mismatched routes
+- Maintains backward compatibility
+- Preserves existing PARTIAL match logic
+- Clear separation of concerns (indexing vs matching)
+
+## Step 7: Three Properties Revealed by Improvement
+
+1. **Mount routes are method-agnostic** — The index builder has to special-case `Mount` objects by adding them to ALL method buckets. This reveals that `isinstance()` checks are already scattered through the router (a type smell).
+
+2. **Method filtering happens at wrong layer** — The `Route.matches()` method still checks `scope["method"] not in self.methods`. Now we check method TWICE: once in the index lookup, once inside `matches()`. This is the **double-check redundancy**.
+
+3. **PARTIAL match state carries implicit information** — By filtering routes upfront, we reduce the chance of PARTIAL matches occurring. But PARTIAL matches aren't just an optimization — they're the mechanism that renders "405 Method Not Allowed" errors. The index doesn't just improve performance; it *changes error behavior* for edge cases where multiple routes have overlapping path patterns.
+
+## Step 8: Apply Diagnostic to the Improvement
+
+**What does the method index conceal?**
+
+The index **conceals the dynamism of route methods**. Route methods are not static — they can be modified at runtime:
+
+```python
+route = Route("/api", endpoint, methods=["GET"])
+route.methods.add("POST")  # This is allowed!
+```
+
+After this mutation, the `_method_index` is stale. The router will continue to route POST requests to the old route list, missing the newly-allowed method. The improvement **introduced a state synchronization bug** that didn't exist before.
+
+**Property of the original problem now visible:**
+
+The original linear scan was **robust to runtime mutations**. It didn't cache method information, so changes to `route.methods` took effect immediately on the next request. The optimization *traded correctness for performance* by introducing a cached invariant that isn't actually invariant.
+
+## Step 9: Second Improvement — Address Runtime Mutation
+
+```python
+class Route(BaseRoute):
+    def __init__(self, path, endpoint, *, methods=None, name=None,
+                 include_in_schema=True, middleware=None):
+        # ... existing code ...
+        self._methods_frozen = False
+        
+    @property
+    def methods(self):
+        return self._methods
+    
+    @methods.setter
+    def methods(self, value):
+        if self._methods_frozen:
+            raise RuntimeError("Cannot modify Route.methods after router initialization")
+        self._methods = value
+        
+    def freeze_methods(self):
+        """Make methods immutable after router has built index."""
+        self._methods_frozen = True
+```
+
+Then in Router:
+```python
+def _build_method_index(self):
+    # ... build index ...
+    for route in self.routes:
+        if isinstance(route, Route):
+            route.freeze_methods()  # Prevent post-init mutations
+```
+
+**Legitimate rationale:** Prevents accidental state desync. Makes the contract explicit.
+
+## Step 10: Apply Diagnostic Again
+
+**What does freezing methods conceal?**
+
+It **conceals the legitimate use case for dynamic route configuration**. Some applications need to add/remove HTTP methods at runtime based on configuration, feature flags, or plugin systems. For example:
+
+```python
+# Feature flag: disable POST in staging
+if ENV == "staging":
+    api_route.methods.discard("POST")
+```
+
+The freeze breaks this pattern. More subtly, it reveals that **Route objects don't own their methods — Router does**. The methods are only meaningful in the context of a Router's routing table. But Route is defined before it's added to any Router, so it has nowhere else to store this state.
+
+**Property revealed:** **Responsibility inversion** — Route stores methods, but Router needs to control them. The ownership is backwards.
+
+## Step 11: Structural Invariant
+
+**The structural invariant:** **Route storage location ≠ Route consumption location**
+
+Routes are defined:
+- **Before** Router construction
+- **Without knowledge of the Router**
+- **With ownership of their own configuration**
+
+Routes are consumed:
+- **Inside** a Router's dispatch loop
+- **With constraints from sibling routes**
+- **With Router-level mutations (middleware, indexing)**
+
+This is a **context mismatch invariant**: objects are created in one context (standalone) but used in another (nested in Router).
+
+## Step 12: Invert the Invariant
+
+**Inverted design:** Routes are created *inside* Router context, and Router owns all configuration.
+
+```python
+class Router:
+    def route(self, path, **kwargs):
+        """Decorator that creates Route bound to this Router."""
+        def decorator(endpoint):
+            route = BoundRoute(self, path, endpoint, **kwargs)
+            self.routes.append(route)
+            return endpoint
+        return decorator
+    
+    def add_route(self, path, endpoint, **kwargs):
+        """Add route directly to this router."""
+        route = BoundRoute(self, path, endpoint, **kwargs)
+        self.routes.append(route)
+
+class BoundRoute(BaseRoute):
+    """Route that knows its parent Router."""
+    def __init__(self, router, path, endpoint, **kwargs):
+        self.router = router
+        # Route has reference back to parent
+        # Can query router for method index, etc.
+```
+
+In this design, Route is **not usable outside Router**. Routes can only be created through `Router.route()` or `Router.add_route()`. The context mismatch disappears because creation and consumption happen in the same context.
+
+## Step 13: New Impossibility
+
+**New impossibility:** **Route reusability**
+
+With the inverted design, you cannot:
+1. Define routes in a module and import them
+2. Compose routers from pre-defined route lists
+3. Test routes in isolation (they require a Router instance)
+4. Share route definitions between multiple Routers
+
+The original design allowed **Route objects as first-class values**. The inverted design makes Routes **second-class entities tied to a specific Router instance**.
+
+## Step 14: Conservation Law
+
+**Conservation Law:** **Route Portability × Router Context = Constant**
+
+- **Original design:** High portability (Route is standalone), low context (no Router awareness)
+- **Inverted design:** Low portability (Route bound to Router), high context (Router is explicit)
+
+You cannot have both. The conservation law predicts:
+- If you improve portability (make Route reusable), you lose context-aware optimizations
+- If you improve context (add indexing, global views), you lose reusability
+
+The quantity being conserved is **coupling domain**: Route can be coupled to its internal state OR to its parent Router, but the total coupling is fixed.
+
+## Step 15: Apply Diagnostic to the Conservation Law
+
+**What does this conservation law conceal?**
+
+It conceals that **portability and context are not opposing forces** — they're actually **different dimensions**. The law assumes a zero-sum tradeoff, but this assumes Routes are *objects*.
+
+**What structural invariant of the law persists?**
+
+When you try to improve the conservation law by "making Routes more flexible" (e.g., allowing both standalone and bound usage), you recreate the original problem at a deeper level: **ambiguous ownership**. If a Route *can* be standalone OR bound, then every piece of code that handles Routes must check for both cases. This is the **double-dispatch problem** in disguise.
+
+The law's invariant is: **any design that allows both states (portable and context-aware) inevitably degenerates into state-checking logic that re-introduces the original triple-entanglement**.
+
+## Step 16: Invert the Law's Invariant — Meta-Law
+
+**Meta-Law:** **Configurability × Singleness of Purpose = Constant**
+
+The conservation law (Portability × Context = Constant) appears to describe a fundamental tradeoff. But the meta-law reveals that the *existence* of this tradeoff is a symptom of a deeper problem: **conflating configuration with execution**.
+
+Routes try to be two things:
+1. **Configuration** — "match GET /api/{id} to this endpoint"
+2. **Execution object** — the thing that performs matching, scope transformation, and dispatching
+
+The meta-law: **Any design that makes Route both a configuration spec AND an execution object will inevitably face the Portability/Context tradeoff.**
+
+**Testable consequence:** If we separate configuration from execution, we can achieve BOTH high portability AND high context.
+
+```python
+@dataclass
+class RouteSpec:
+    """Immutable configuration - portable, no context."""
+    path: str
+    methods: Set[str]
+    endpoint: Callable
+    name: Optional[str] = None
+    
+class CompiledRoute:
+    """Execution object - context-aware, not portable."""
+    def __init__(self, spec: RouteSpec, parent_router: Router):
+        self.spec = spec
+        self.router = parent_router
+        self.path_regex = compile_path(spec.path)
+        
+    def matches(self, scope):
+        # ... can query router for method index ...
+```
+
+Now `RouteSpec` is portable (pure data), `CompiledRoute` is context-aware (has router ref). The conservation law is **broken** because we no longer try to make one object serve both purposes.
+
+**What the meta-law conceals:**
+
+The meta-law itself conceals that **this separation already exists in the code, but implicitly**. Notice that `compile_path()` is called in `Route.__init__()` — this is compilation. The `path_regex` is the compiled artifact. The bug is that **compilation happens too early** (at Route construction, before Router context is available) rather than **too late** (at dispatch time).
+
+The real fix is not a new abstraction — it's **lazy compilation**:
+
+```python
+class Route(BaseRoute):
+    def __init__(self, path, endpoint, *, methods=None, ...):
+        self._path_spec = path  # Store uncompiled
+        self._compiled = None  # Lazy cache
+        
+    @property
+    def path_regex(self):
+        if self._compiled is None:
+            self._compiled = compile_path(self._path_spec)
+        return self._compiled[0]
+```
+
+This allows Route to be portable (can be created before Router) BUT defers compilation until Router context is available. The router could then inject context:
+
+```python
+class Router:
+    def add_route(self, route: Route):
+        route._compile_with_context(self)  # Pass router to compilation
+```
+
+## Step 17: Concrete Bug Harvest
+
+| Bug/Edge Case | Location | What Breaks | Severity | Fixable? | Predicted By |
+|--------------|----------|-------------|----------|----------|--------------|
+| **Method shadowing** | `Router.app()` L169-176 | POST to `/api/users` matches PARTIAL on GET `/api/{id}` if it appears first in routes list. Returns 405 from wrong route. | Medium | Fixable (but changes semantics) | Progressive commitment |
+| **Route mutation stale index** | Proposed improvement `_method_index` | Mutating `route.methods` at runtime causes index desync. Router won't route new methods. | High | Fixable (but sacrifices dynamic config) | Conservation law |
+| **Mount double-parameter handling** | `Mount.matches()` L135-142 | If mount path is `/api/{prefix}` and mounted app has route `/{id}`, request to `/api/users/123` results in `path_params={"prefix": "users", "id": "123"}`. Nested mounts can overwrite param keys. | Medium | Structural (design choice) | Triple entanglement |
+| **Redirect slash loses query params** | `Router.app()` L180-192 | When redirecting `/path/` → `/path`, the `redirect_scope` is shallow copy. If middleware added query params to scope, they're lost. | Low | Fixable (deep copy) | Progressive commitment |
+| **NoMatchFound message lies** | `NoMatchFound.__init__` L6-8 | Exception claims "No route exists" but route might exist with wrong params or wrong method. Misleading for debugging. | Low | Fixable | Concealment |
+| **url_path_for silent partial match** | `Route.url_path_for()` L109-116 | If params don't match expected set exactly, raises NoMatchFound. But if extra params are provided that *would* match a different route, no hint is given. | Low | Structural (API design) | Bidirectional coupling |
+| **Lifespan context type ambiguity** | `Router.__init__` L147-156 | Code accepts `asynccontextmanager` function OR raw async generator. The deprecation warning tries to distinguish them using `inspect.isasyncgenfunction`, but a decorated asynccontextmanager is still an async generator function under the hood. Type check is unreliable. | Medium | Fixable (require explicit contextmanager type) | Triple entanglement (lifespan is third operation) |
+| **Middleware execution order reversal** | `Route.__init__` L79-82, `Router.__init__` L160-162 | Both use `reversed(middleware)` when wrapping. This means the *last* middleware in the list executes *first* (like a stack). This is correct but surprising — users expect first-listed = first-executed. | Low | Fixable (document or reverse) | Concealment (order hidden in functools.wraps) |
+| **Compile path host regex edge case** | `compile_path()` L50-53 | For host-based routing (`is_host=True`), the code strips port with `split(":")[0]`. IPv6 addresses contain colons. `"[::1]"` would split to `"[::"`. | High | Fixable (proper URL parsing) | Scope transformation (host vs path conflation) |
+| **PARTIAL match never re-checked after redirect** | `Router.app()` L180-192 | If a route matches PARTIAL (wrong method) and router tries redirect slash, the redirect uses the *same* routes list. If redirect would match FULL on a different route, it still uses PARTIAL route. | Medium | Structural (design choice) | Progressive commitment |
+
+**Summary:** Found 10 bugs/edge cases. 6 fixable (implementation issues), 4 structural (design tradeoffs). The conservation law predicts that fixing the structural ones requires making an explicit choice in the Portability/Context tradeoff.
+
+  [2mSaved to .deep/findings/real_code_starlette.md[0m
+  [36m6 issues (2 P1, 2 P2, 2 P3).[0m
+  [2m  Type a number to fix one issue[0m
+  [2m  /fix          pick issues interactively[0m
+  [2m  /fix auto     fix all issues (up to 3 passes)[0m

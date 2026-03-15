@@ -1,0 +1,1 @@
+Analyze all code using three phases: correlate (find relationships), transform (nonlinear map), compress (reduce resolution). Identify the resolution pyramid.

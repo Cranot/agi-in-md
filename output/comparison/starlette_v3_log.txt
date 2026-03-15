@@ -1,0 +1,151 @@
+
+============================================================
+  COMPARISON: real_code_starlette.py (333 lines)
+  Mode: prism
+============================================================
+
+============================================================
+  PIPELINE: Prism (Single Scan + 1 Fix Pass)
+============================================================
+
+  [1] Single Scan...
+      L12 output: 26910 chars, $0.0856
+
+  [2] Extracting issues...
+      Extracting issues via model call...
+      Extraction: $0.0935, 101.3s
+      Extracted 11 issues
+
+  [2/2] Fixing 11 issues (fixing)...
+    [1/11] Trailing-slash redirect doesn't validate target route s
+      SKIP: 307
+    [2/11] Mount-level method mismatches don't generate Allow head
+      SKIP: class Router|def app\(self\)|Match.PARTIAL
+    [3/11] Route.matches() executes convertors even for method-inv
+      APPLIED (indent-normalized) | $0.0678
+    [4/11] Route.__init__() auto-adds HEAD to methods but doesn't 
+      SKIP: class Route.*__init__
+    [5/11] request_response() creates duplicate functools.partial 
+      APPLIED (exact) | $0.0471
+    [6/11] Route.matches() exposes endpoint identity in child_scop
+      FAIL: not found
+    [7/11] compile_path() duplicate param validation error lacks s
+      SKIP: raise ValueError.*Duplicated param
+    [8/11] NoMatchFound exception doesn't include HTTP method
+      APPLIED (indent-normalized) | $0.0972
+    [9/11] PARTIAL matches from method mismatch don't re-validate 
+      SKIP: Match.PARTIAL
+    [10/11] Match.PARTIAL enum overloaded for path-redirect and met
+      SKIP: ^class Match
+    [11/11] request_response() async detection fails for classes wi
+      APPLIED (exact) | $0.0260
+
+  After pass 1: 4/11 fixed
+
+  Result: 4/11 fixed, $0.7816
+
+============================================================
+  PIPELINE: Prism (Full Scan + Auto Fix 3-pass)
+============================================================
+
+  [1] Full Scan...
+      L12 output: 26655 chars, $0.0955
+      Adversarial challenge...
+      Adversarial output: 26905 chars, $0.1157
+      Synthesis...
+      Synthesis output: 11838 chars, $0.0603
+
+  [2] Extracting issues...
+      Extracting issues via model call...
+      Extraction: $0.1200, 117.9s
+      Extracted 14 issues
+
+  [2/2] Fixing 14 issues (pass 1)...
+    [1/14] Incomplete Allow header when multiple routes match same
+      SKIP: class Router.*def __call__|for.*in.*self\.routes.*
+    [2/14] Type converter exceptions not logged during path matchi
+      APPLIED (indent-normalized) | $0.0628
+    [3/14] url_path_for() doesn't validate parameter types before 
+      APPLIED (exact) | $0.0467
+    [4/14] Parameter name collision in nested Mount/Route combinat
+      SKIP: path_params.update\(matched_params\)
+    [5/14] compile_path() uses assert for convertor type validatio
+      APPLIED (exact) | $0.0442
+    [6/14] replace_params() mutates input path_params dictionary
+      APPLIED (exact) | $0.0211
+    [7/14] NoMatchFound error doesn't include route context
+      SKIP: raise NoMatchFound
+    [8/14] WebSocket routing mismatch closes silently without logg
+      APPLIED (exact) | $0.0561
+    [9/14] Route.__init__() doesn't validate endpoint is callable
+      SKIP: class Route
+    [10/14] Route.__init__() doesn't validate middleware tuple form
+      SKIP: class Route.*def __init__.*middleware
+    [11/14] CONVERTOR_TYPES dictionary not validated before use
+      APPLIED (exact) | $0.0351
+    [12/14] request_response() decorator creates inner function wit
+      APPLIED (exact) | $0.0289
+    [13/14] replace_params() doesn't validate convertor.to_string()
+      FAIL: invalid JSON
+    [14/14] No detection of cyclic Mount nesting causing infinite r
+      SKIP: class Mount
+
+  After pass 1: 7/14 fixed
+
+  --- Pass 2: retrying 7 unfixed ---
+
+  [2/2] Fixing 7 issues (pass 2)...
+    [1/14] Incomplete Allow header when multiple routes match same
+      SKIP: class Router.*matches|for.*route.*in.*routes.*part
+    [4/14] Parameter name collision in nested Mount/Route combinat
+      APPLIED (indent-normalized) | $0.0365
+    [7/14] NoMatchFound error doesn't include route context
+      SKIP: raise NoMatchFound
+    [9/14] Route.__init__() doesn't validate endpoint is callable
+      SKIP: class Route
+    [10/14] Route.__init__() doesn't validate middleware tuple form
+      SKIP: class Route
+    [13/14] replace_params() doesn't validate convertor.to_string()
+      FAIL: not found
+    [14/14] No detection of cyclic Mount nesting causing infinite r
+      SKIP: class Mount.*:
+.*def __init__
+
+  After pass 2: 8/14 fixed
+
+  --- Pass 3: retrying 6 unfixed ---
+
+  [2/2] Fixing 6 issues (pass 3)...
+    [1/14] Incomplete Allow header when multiple routes match same
+      SKIP: class Router
+    [7/14] NoMatchFound error doesn't include route context
+      SKIP: raise NoMatchFound
+    [9/14] Route.__init__() doesn't validate endpoint is callable
+      SKIP: ^class Route
+    [10/14] Route.__init__() doesn't validate middleware tuple form
+      SKIP: class Route.*:
+.*def __init__.*middleware
+    [13/14] replace_params() doesn't validate convertor.to_string()
+      SKIP: convertor.to_string
+    [14/14] No detection of cyclic Mount nesting causing infinite r
+      SKIP: class Mount
+
+  After pass 3: 8/14 fixed
+
+  Result: 8/14 fixed, $1.2686
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                     Prism Weakest   Prism Strongest
+  ──────────────────────────────────────────────────────────────────
+  Bugs found                                    11                14
+  Bugs fixed                                     4                 8
+  Fix rate                                     36%               57%
+  Cost                           $          0.7816 $          1.2686
+  Time                                      917.3s           1384.1s
+
+  Results saved: ./output\comparison\compare_real_code_starlette_prism.json
+
+  Done!

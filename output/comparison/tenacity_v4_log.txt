@@ -1,0 +1,65 @@
+
+============================================================
+  COMPARISON: real_code_tenacity.py (331 lines)
+  Mode: single
+============================================================
+
+============================================================
+  PIPELINE: Prism (Single Scan + 1 Fix Pass)
+============================================================
+
+  [1] Single Scan...
+      L12 output: 25512 chars, $0.1102
+
+  [2] Extracting issues...
+      Parsed bug table: 13 rows, 13 fixable
+      Extracted 13 issues from bug table (no API call)
+      Extracted 13 issues
+
+  [2/2] Fixing 13 issues (fixing)...
+    [1/13] #1: Not thread-safe
+      APPLIED (exact) | $0.0575
+    [2/13] #2: Loses retry context
+      APPLIED (exact) | $0.0256
+    [3/13] #3: Concurrent iterations corrupt state
+      APPLIED (indent-normalized) | $0.0748
+    [4/13] #4: Returns None prematurely
+      APPLIED (exact) | $0.0503
+    [5/13] #5: Doesn't preserve statistics/iter_state
+      SKIP: def copy\(self, \*\*kw\):.*?return self\.__class__
+    [6/13] #6: statistics attribute is non-atomic
+      APPLIED (exact) | $0.0449
+    [7/13] #7: Suppresses exceptions silently
+      APPLIED (exact) | $0.0689
+    [8/13] #8: Clears outcome while actions reference it
+      APPLIED (exact) | $0.0311
+    [9/13] #9: Sets upcoming_sleep to None
+      APPLIED (exact) | $0.0814
+    [10/13] #10: Return values are ignored
+      APPLIED (exact) | $0.0891
+    [11/13] #11: Closures might capture stale state
+      APPLIED (exact) | $0.0915
+    [12/13] #12: retry=None causes AttributeError
+      APPLIED (exact) | $0.1034
+    [13/13] #13: No type validation
+      APPLIED (exact) | $0.0350
+
+  After pass 1: 12/13 fixed
+
+  Result: 12/13 fixed, $1.1225
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                     Prism Weakest
+  ────────────────────────────────────────────────
+  Bugs found                                    13
+  Bugs fixed                                    12
+  Fix rate                                     92%
+  Cost                           $          1.1225
+  Time                                     1265.4s
+
+  Results saved: ./output\comparison\compare_real_code_tenacity_single.json
+
+  Done!

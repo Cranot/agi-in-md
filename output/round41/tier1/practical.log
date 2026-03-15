@@ -1,0 +1,9 @@
+=== PRACTICAL TRANSLATION TESTS ===
+--- PT-1: Specificity-based confidence estimation ---
+PT-1: HIGH=4 MED=3 LOW=2 UNVERIFIED=0
+0 total=1128w
+--- PT-2: Pure format prism (no domain words) ---
+PT-2: 1428w
+--- PT-3: Aspiration levels ---
+PT-3 shallow: 288w
+=== PRACTICAL TESTS DONE ===

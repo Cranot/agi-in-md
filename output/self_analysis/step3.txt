@@ -1,0 +1,142 @@
+Looking at this code systematically through the structural analysis framework:
+
+## Step 1: Locate the Structural Defect
+
+**The deepest problem is the `__class__` rebind in `_cmd_reload()` (line ~1076):**
+
+```python
+def _cmd_reload(self):
+    # ... module loading code ...
+    self.__class__ = mod.PrismREPL  # ← THE DEFECT
+    self._ensure_attributes()  # ← PATCH THAT PROVES IT'S BROKEN
+```
+
+**Why this is the root cause (not a symptom):**
+
+1. **Split brain**: After `self.__class__ = mod.PrismREPL`, the instance has:
+   - `self.__dict__` from the *old* class's `__init__`
+   - Methods from the *new* class
+   - Any class variables from the *new* class
+   - These expect different things from each other
+
+2. **The patch proves the defect**: `_ensure_attributes()` exists solely to paper over the fact that the new class's methods expect attributes that the old `__init__` never created. Without this guard, the rebind crashes.
+
+3. **Repeated patches to the same area**: 
+   - Lines 442-459: `_ensure_attributes()` with a `defaults` dict
+   - Line 1076: The `__class__` rebind itself
+   - Line 1077: Immediate call to `_ensure_attributes()`
+   - These form a single "patch cluster" around the rebind
+
+4. **What the code cannot express cleanly**: It cannot express "reload this code and preserve this instance's state" because the two goals are **structurally incompatible**. The instance's state was initialized by old code, but new code may have different initialization invariants.
+
+**Citation:**
+- **Location**: `PrismREPL._cmd_reload()`, line ~1076: `self.__class__ = mod.PrismREPL`
+- **Supporting patch**: Lines 442-459: `_ensure_attributes()` method
+- **Usage**: Line 1077: `self._ensure_attributes()` called immediately after rebind
+
+---
+
+## Step 2: Trace What a Fix Would Hide
+
+**Proposed fix:** Remove `__class__` rebind. Instead, create a fresh `PrismREPL` instance with the new module and migrate state:
+
+```python
+def _cmd_reload(self):
+    # Load new module
+    spec = importlib.util.spec_from_file_location("_prism_reload", SCRIPT_DIR / "prism.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    
+    # Create fresh instance with new class
+    old_instance = self
+    new_instance = mod.PrismREPL.__new__(mod.PrismREPL)
+    
+    # Migrate critical state
+    new_instance.session = old_instance.session
+    new_instance.working_dir = old_instance.working_dir
+    new_instance.queued_files = old_instance.queued_files.copy()
+    # ... etc for all state
+    
+    # Replace in caller's reference (THIS IS THE PROBLEM)
+    # How does the REPL's main loop get the new instance?
+```
+
+**What diagnostic signal this destroys:**
+
+1. **Method identity becomes meaningless**: 
+   - `self._cmd_reload` now points to code from the *new* module
+   - But `self.session` was initialized by the *old* `__init__`
+   - Any invariants the old `__init__` established about `self.session` are now invisible
+   - Error: "AttributeError: 'Session' object has no attribute 'foo'" — but you can't tell whether this is because the old code didn't set it, or the new code expects something different
+
+2. **State initialization path becomes unobservable**:
+   - Old: `session = Session(model="haiku")` in `__init__` — clear initialization contract
+   - New: `session` appears from nowhere (migrated by hand)
+   - Any validation in `Session.__init__` is bypassed
+   - Future changes to `Session` initialization won't run for migrated instances
+
+3. **Class-level state desynchronization**:
+   - If the old class had `COMMAND_REGISTRY = {...}`
+   - And the new class changes `COMMAND_REGISTRY` structure
+   - The instance's `self._commands` (from old init) now references the wrong structure
+   - No error until you try to access a command that changed
+
+4. **Exception stack traces become misleading**:
+   ```
+   File "prism.py", line 1076, in _cmd_reload
+       self.__class__ = mod.PrismREPL
+   File "prism.py", line 2345, in some_new_method
+       attr = self.config_cache  # Attribute added in new code
+   AttributeError: 'PrismREPL' object has no attribute 'config_cache'
+   ```
+   The error says "line 2345" but the instance was never properly initialized for that code path.
+
+**The fix buries the problem deeper** by replacing an obvious crash (incompatible rebind) with subtle state corruption that manifests later, in unrelated code, with misleading error messages.
+
+---
+
+## Step 3: Identify the Unfixable Invariant
+
+**Apply the fix mentally:**
+
+1. **Iteration 1**: We migrate state manually. Now we have to maintain a list of which attributes to migrate. Every time we add a new attribute to `__init__`, we must remember to add it to the migration logic. 
+
+2. **Iteration 2**: Automate migration with `self.__dict__.copy()`. But this copies *everything*, including stale attributes that the new code removed. Now the new code runs with "ghost" attributes from old versions.
+
+3. **Iteration 3**: Add a "version number" to the state. Each class knows how to migrate from version N-1. But now we have to write migration code for *every* change to the instance structure. This becomes a full database schema migration system, but for in-memory objects.
+
+4. **Iteration 4**: Realize that the REPL loop itself holds a reference to the instance. Even if we create a new instance, the caller's `repl = PrismREPL(...)` in `main()` still points to the old instance. We'd need to swap the reference in the caller, but the caller is the `run()` method itself, and it's iterating on `self`.
+
+**The persistent property through ALL iterations:**
+
+> **A running instance cannot simultaneously preserve its mutable state AND adopt a new class definition.**
+
+This is structural because:
+- The instance's state was **initialized** by old code (with old invariants)
+- The new class expects **different initialization** (with new invariants)
+- There is no general way to transform "state satisfying invariants A" into "state satisfying invariants B" without:
+  - Writing custom migration logic for every change (maintains the problem: you must now maintain both the code AND the migrations)
+  - Violating the new class's invariants (creates time bombs)
+  - Destroying the instance's state (breaks the whole point of hot reload)
+
+**The invariant:**
+```
+EXISTING_INSTANCE_STATE ∪ NEW_CLASS_DEFINITION → STATE_CORRUPTION
+```
+
+Where:
+- `EXISTING_INSTANCE_STATE` = the `__dict__` created by old `__init__`
+- `NEW_CLASS_DEFINITION` = methods expecting different `__dict__` structure
+- `STATE_CORRUPTION` = subtle bugs, missing attributes, or violated invariants
+
+This is a **conservation law**: you can preserve the instance OR the new code, but not both. Hot reload requires one to die.
+
+---
+
+## Verdict
+
+| Core Defect | Location | What Fix Hides | Invariant | Verdict |
+|-------------|----------|----------------|-----------|---------|
+| `__class__` rebind splits instance identity between old state and new code | `_cmd_reload()` line ~1076: `self.__class__ = mod.PrismREPL` | State initialization path becomes unobservable; migrations create maintenance debt; exception stacks mislead | A running instance cannot simultaneously preserve its mutable state AND adopt a new class definition | **STRUCTURAL** |
+
+**Conclusion**: This must be **managed**, never solved. The only "real" fix is to eliminate hot reload entirely and require the user to restart Prism after code changes. Any attempt to preserve the instance across code reloads will always create a new form of the same problem: the instance and its class definition will be out of sync. The `_ensure_attributes()` patch is the "least bad" compromise — it admits the problem exists and tries to mitigate it, rather than hiding it behind a more complex migration system.

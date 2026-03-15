@@ -1,0 +1,337 @@
+```json
+[
+  {
+    "claim": "Instantaneous route lookup – O(1) or O(log n) regardless of route count",
+    "tier": "ASSUMED",
+    "confidence": 0.15,
+    "provenance": "assumption:none",
+    "fill_source": "benchmark: route lookup timing vs route count",
+    "falsifiable": true,
+    "impact_if_wrong": "If O(n) is acceptable in practice, the trilemma premise is weakened."
+  },
+  {
+    "claim": "Full expressiveness – nested mounts, path converters, method filtering, pattern matching",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:Router.py_lines_129-194",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If features are missing, the property list is incomplete."
+  },
+  {
+    "claim": "Architectural simplicity – maintainable, comprehensible codebase",
+    "tier": "ASSUMED",
+    "confidence": 0.2,
+    "provenance": "assumption:none",
+    "fill_source": "expert: code review assessment",
+    "falsifiable": false,
+    "impact_if_wrong": "Simplicity is subjective; this property may not be meaningfully constrained."
+  },
+  {
+    "claim": "Router.app() iterates with `for route in self.routes` which is O(n) complexity where n = route count",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_225-234",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If iteration is not the bottleneck, the conservation law is misattributed."
+  },
+  {
+    "claim": "FLEXIBILITY × PERFORMANCE = COMPILE-TIME BUDGET",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_O(n)_iteration_and_regex_precompilation",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Wrong conservation law would misidentify what trade-offs are fundamental."
+  },
+  {
+    "claim": "Regex pre-compilation shifts cost to initialization, but runtime scales linearly",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:compile_path_lines_24-51",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If regex compilation happens at runtime, performance analysis is wrong."
+  },
+  {
+    "claim": "You cannot have constant-time lookup AND arbitrary regex patterns AND simple sequential iteration",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_linear_iteration_over_regex_routes",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If a hybrid data structure achieves this, the impossibility theorem is false."
+  },
+  {
+    "claim": "Trie-based optimization would provide O(path_length) lookup",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.5,
+    "provenance": "external:algorithms_textbook",
+    "fill_source": "cs:trie_data_structure_complexity",
+    "falsifiable": true,
+    "impact_if_wrong": "If trie is not O(path_length), proposed optimization is mischaracterized."
+  },
+  {
+    "claim": "Mount.url_path_for() searches all child routes linearly lines 177-194",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_177-194",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If not linear search, defect classification is wrong."
+  },
+  {
+    "claim": "Mount.matches() uses {path:path} capture which consumes arbitrary remaining paths",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_129",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If capture is bounded, trie optimization may be viable."
+  },
+  {
+    "claim": "Dynamic nested routing requires exhaustive descendant search",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_arbitrary_path_capture_and_nested_mounts",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If search can be pruned, the impossibility is overstated."
+  },
+  {
+    "claim": "The trie cannot help when any branch might contain a match at arbitrary depth",
+    "tier": "DERIVED",
+    "confidence": 0.82,
+    "provenance": "derivation:from_dynamic_path_capture_semantics",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If trie can be augmented for arbitrary depth, optimization is viable."
+  },
+  {
+    "claim": "LRU Cache on (path, method) → (match, child_scope) would provide O(1) repeated requests",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.55,
+    "provenance": "external:caching_algorithms",
+    "fill_source": "cs:lru_cache_amortized_complexity",
+    "falsifiable": true,
+    "impact_if_wrong": "If cache overhead exceeds benefit, optimization is counterproductive."
+  },
+  {
+    "claim": "Each request mutates scope['path_params'] differently",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_106-114",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If params are immutable, caching is viable."
+  },
+  {
+    "claim": "Caching prevents per-request isolation – cached result cannot be reused because subsequent requests need independent path_params dict instances",
+    "tier": "DERIVED",
+    "confidence": 0.88,
+    "provenance": "derivation:from_scope_mutation_pattern",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If shallow copy solves this, caching is viable."
+  },
+  {
+    "claim": "Stateful routing breaks cache invalidation",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:from_per_request_scope_mutation",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If invalidation strategy exists, caching remains viable."
+  },
+  {
+    "claim": "DECLARATIVE COMPLETENESS × RUNTIME MUTABILITY = FRAMEWORK BOUNDARY",
+    "tier": "DERIVED",
+    "confidence": 0.78,
+    "provenance": "derivation:from_compile_time_regex_vs_mutable_scope",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Wrong conservation law misidentifies where friction is unavoidable."
+  },
+  {
+    "claim": "compile_path() builds static regex at initialization",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_24-51",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If regex is dynamic, declarative intent claim is wrong."
+  },
+  {
+    "claim": "scope['path_params'] mutated per-request",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_106-114",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If immutable, the mutability premise is wrong."
+  },
+  {
+    "claim": "Route methods fixed at init",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:Route___init__",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If methods change at runtime, declarative intent is violated."
+  },
+  {
+    "claim": "Method check happens after regex match (line 116)",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_116",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If check is before regex, performance analysis is wrong."
+  },
+  {
+    "claim": "Middleware stack pre-built at initialization",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_76-80_143-145",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If middleware is dynamic, declarative intent claim is wrong."
+  },
+  {
+    "claim": "root_path accumulation nested (line 144)",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_144",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If not nested, table entry is wrong."
+  },
+  {
+    "claim": "The impedance mismatch creates permanent friction",
+    "tier": "ASSUMED",
+    "confidence": 0.25,
+    "provenance": "assumption:none",
+    "fill_source": "expert:framework_design_assessment",
+    "falsifiable": false,
+    "impact_if_wrong": "Friction is qualitative; may not be meaningfully verified."
+  },
+  {
+    "claim": "The framework boundary is where declarative patterns meet mutable ASGI scopes",
+    "tier": "DERIVED",
+    "confidence": 0.75,
+    "provenance": "derivation:from_static_regex_vs_mutable_scope_tension",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If boundary is elsewhere, diagnostic misidentifies root cause."
+  },
+  {
+    "claim": "Sequential iteration in Router.app() lines 225-234 is HIGH severity STRUCTURAL defect",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_conservation_law_prediction",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If severity is lower, prioritization is wrong."
+  },
+  {
+    "claim": "Mount.url_path_for() searches all child routes linearly lines 177-194 is MEDIUM severity STRUCTURAL defect",
+    "tier": "DERIVED",
+    "confidence": 0.82,
+    "provenance": "derivation:from_descendant_search_requirement",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If severity is different, prioritization is wrong."
+  },
+  {
+    "claim": "Duplicate path_params logic in Route.matches() and Mount.matches() is LOW severity FIXABLE defect",
+    "tier": "MEASURED",
+    "confidence": 0.7,
+    "provenance": "source:lines_106-114_129-145",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If duplication causes bugs, severity is underestimated."
+  },
+  {
+    "claim": "replace_params() mutates input via pop() line 62 is MEDIUM severity FIXABLE defect",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_62",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If caller expects mutation, this is not a defect."
+  },
+  {
+    "claim": "Method check AFTER regex in Route.matches() line 116 is LOW severity STRUCTURAL defect",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_116",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If method-first is required, severity is underestimated."
+  },
+  {
+    "claim": "redirect_slashes causes double iteration lines 248-258 is MEDIUM severity STRUCTURAL defect",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_248-258",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If redirect avoids second full iteration, description is wrong."
+  },
+  {
+    "claim": "No validation that middleware is callable before wrapping is LOW severity FIXABLE defect",
+    "tier": "MEASURED",
+    "confidence": 0.65,
+    "provenance": "source:lines_76-80",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If TypeError message is clear, severity is lower."
+  },
+  {
+    "claim": "Structural defects (1, 2, 5, 6) are consequences of the conservation law",
+    "tier": "DERIVED",
+    "confidence": 0.88,
+    "provenance": "derivation:from_flexibility_performance_tradeoff",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If fixable without violating conservation, classification is wrong."
+  },
+  {
+    "claim": "Fixable defects (3, 4, 7) are implementation oversights correctable without architectural redesign",
+    "tier": "DERIVED",
+    "confidence": 0.82,
+    "provenance": "derivation:from_localized_mutation_and_validation_patterns",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If fixes require architectural changes, classification is wrong."
+  },
+  {
+    "claim": "You cannot optimize what you must search exhaustively",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_linear_search_over_arbitrary_regex_patterns",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If pruning is possible, the impossibility is overstated."
+  },
+  {
+    "claim": "Starlette trades lookup performance for routing expressiveness",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_conservation_law_and_code_structure",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If trade-off is different, recommendation would change."
+  },
+  {
+    "claim": "This trade-off is embedded in every recursive optimization attempt",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:from_trie_and_cache_failure_modes",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If an optimization escapes the trade-off, conservation law is incomplete."
+  }
+]
+```

@@ -1,0 +1,189 @@
+# Analysis of Error Boundaries in prism.py
+
+## Step 1: The Error Boundaries
+
+| Boundary | Location | What's Destroyed | What's Preserved |
+|----------|----------|------------------|------------------|
+| **Windows ANSI setup** | Lines 38-65 | Which exception (ImportError vs ctypes vs generic Exception), specific failure mode | `ANSI_SUPPORTED = False` flag |
+| **stdout encoding** | Lines 67-71 | Exception type, what specific encoding issue occurred | Silent continuation via `pass` |
+| **_log_error OSError** | Lines 300-310 | Which OSError, file path, write failure details | Fallback to stderr logging |
+| **_cleanup_skills_cache** | Lines 343-376 | What went wrong, which files failed to delete | Cache continues (may exceed limit) |
+| **ClaudeInterface.call JSON** | Lines 467-525 | JSONDecodeError vs TypeError vs AttributeError distinction | Raw output text returned |
+| **Session.load JSON** | Lines 638-673 | Corruption type, corruption location, partial recoverable data | Returns `False`, prints summary |
+| **YieldTracker._load** | Lines 726-736 | Why database is corrupt | Returns empty dict (fresh start) |
+| **YieldTracker._save** | Lines 748-757 | OSError vs PermissionError, which write failed | Silent `pass` |
+| **SessionLog operations** | Lines 813-869 | Specific logging failures | Silent continuation (adisory) |
+| **StreamParser.parse_line** | Lines 894-942 | Full line content (logs only 200 chars) | Exception type as string |
+| **ClaudeBackend.send pipe** | Lines 1029-1079 | Why pipe broke, subprocess exit code, stderr | Silent return, no yield |
+| **review() file reads** | Lines 1257-1283 | Exception type, which file failed, why | Empty result string, error count |
+| **_ensure_attributes** | Lines 1133-1145 | Which attributes were missing | Default values set implicitly |
+| **_detect_file_mentions fuzzy** | Lines 1515-1563 | OSError details (permission vs filesystem) | File not queued |
+| **_save_deep_finding read** | Lines 1590-1638 | Read failure details (encoding vs corruption) | Overwrites entire file |
+| **_load_deep_context JSON** | Lines 1640-1716 | Per-file error specifics | Partial context from successful reads |
+| **_config() JSON** | Lines 1863-1881 | JSON parse error details | Warning printed once |
+| **_load_prism metadata** | Lines 2043-2099 | Which metadata field malformed | Continues with prism content |
+
+---
+
+## Step 2: The Missing Context
+
+### Boundary: **Session.load() JSON parsing failure**
+
+**Destroyed datum:** The specific corruption type, location, and any partial recoverable data from the session file.
+
+**Decision branch affected:** Whether to return `False` (start fresh) or attempt partial recovery.
+
+**Wrong branch taken:** Always returns `False` → fresh session with all counters zeroed.
+
+**Harm traced through downstream code:**
+
+1. **_cmd_cost()** (called via `/cost` command)
+   - Reads: `self.session.total_input_tokens`, `self.session.total_output_tokens`, `self.session.total_cost_usd`
+   - **Wrong display:** Shows "Turns: 0, In: 0, Out: 0, Cost: $0.0000"
+   - **User perception:** "I haven't used Prism much" when actually they've spent $5.47 across 127 turns
+   - **Harm:** Budget decisions made on incorrect data
+
+2. **Session.save()** (called via `/save` command)
+   - Writes: The zeroed-out session state to disk
+   - **Overwrites:** Any chance of future recovery
+   - **Harm:** Permanent data loss
+
+3. **_log_error()** telemetry
+   - Records: Operations with `cost_estimate` field
+   - **Wrong value:** Cost estimates become meaningless without historical baseline
+   - **Harm:** Unable to detect cost anomalies or model pricing changes
+
+4. **User workflow**
+   - Pattern: User works across multiple days, saving/resuming sessions to track API costs
+   - **Break:** Corruption on day 7 → entire week's tracking lost
+   - **Misleading error:** "corrupt session file" gives no hint whether it's:
+     - Concurrent write collision (fixable: retry)
+     - Crash during save (fixable: recover partial)
+     - Disk corruption (not fixable)
+   - **Harm:** User abandons session tracking entirely, loses visibility into usage
+
+5. **Cost attribution**
+   - Session `total_cost_usd` used for: per-project cost tracking, model choice justification, billing reconciliation
+   - **After corruption:** All zero, no historical record
+   - **Harm:** Cannot justify "use Haiku for this, Sonnet for that" based on real data
+
+**Misleading error symptom:** User thinks session never existed or was never saved, when actually it existed but became corrupt. The error message `"corrupt session file {name}: {e}"` shows the exception but provides no actionable recovery path.
+
+---
+
+## Step 3: The Impossible Fix
+
+| Boundary | Destroyed | Wrong Decision | Harm | Fix A Destroys | Fix B Destroys | Invariant |
+|----------|-----------|----------------|------|----------------|----------------|-----------|
+| **Session.load()** | Corruption type/location, partial data | Always return False → fresh session | Permanent loss of token/cost tracking history | Clean failure semantics (now sometimes returns partial data), simplicity, performance | Recoverable data, user agency, historical continuity | **SESSION STATE ATOMICITY** — session fields are either all valid from file or all zero (fresh start), never partially recovered |
+
+### Fix A: Aggressive Recovery (Preserves Data)
+
+```python
+def load(self, name):
+    sessions_dir = pathlib.Path.home() / ".prism_sessions"
+    path = sessions_dir / f"{name}.json"
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        # NEW: Backup before attempting recovery
+        backup_path = path.with_suffix(f".json.corrupt.{int(time.time())}")
+        try:
+            shutil.copy(path, backup_path)
+        except OSError:
+            pass
+        
+        # NEW: Attempt partial recovery
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        recovered = self._recover_session_fields(raw)
+        
+        if recovered:
+            print(f"Warning: partially recovered session {name}")
+            print(f"Corrupted file backed up to: {backup_path.name}")
+            print(f"Recovered: {', '.join(recovered.keys())}")
+            data = recovered
+        else:
+            print(f"Warning: unrecoverable corruption: {e}")
+            return False
+    
+    # ... rest of load logic ...
+    return True
+
+def _recover_session_fields(self, raw):
+    """Extract session fields from corrupted JSON via regex."""
+    import re
+    fields = {}
+    patterns = {
+        "session_id": r'"session_id"\s*:\s*"([^"]+)"',
+        "model": r'"model"\s*:\s*"([^"]+)"',
+        "total_input_tokens": r'"total_input_tokens"\s*:\s*(\d+)',
+        "total_output_tokens": r'"total_output_tokens"\s*:\s*(\d+)',
+        "total_cost_usd": r'"total_cost_usd"\s*:\s*([\d.]+)',
+        "turn_count": r'"turn_count"\s*:\s*(\d+)',
+    }
+    for field, pattern in patterns.items():
+        m = re.search(pattern, raw)
+        if m:
+            val = m.group(1)
+            if field in ["total_input_tokens", "total_output_tokens", "turn_count"]:
+                val = int(val)
+            elif field == "total_cost_usd":
+                val = float(val)
+            fields[field] = val
+    fields["_version"] = 1
+    return fields if len(fields) >= 3 else None  # Require minimum 3 fields
+```
+
+**Fix A destroys:**
+- Clean failure semantics (can now return partial data)
+- Simplicity (complex recovery logic)
+- Performance (regex on every failure)
+- May return misleading incomplete data
+
+### Fix B: Enhanced Failure (Preserves Invariant)
+
+```python
+def load(self, name):
+    sessions_dir = pathlib.Path.home() / ".prism_sessions"
+    path = sessions_dir / f"{name}.json"
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: corrupt session file {name}: {e}")
+        
+        # NEW: Detailed corruption context
+        if isinstance(e, json.JSONDecodeError):
+            print(f"  Position {e.pos}: {e.msg}")
+            try:
+                raw = path.read_text(encoding="utf-8", errors="replace")
+                ctx_start = max(0, e.pos - 40)
+                ctx_end = min(len(raw), e.pos + 40)
+                print(f"  Context: ...{raw[ctx_start:ctx_end]}...")
+            except OSError:
+                pass
+        else:
+            print(f"  Filesystem error: {type(e).__name__}")
+            print(f"  Hint: check file permissions and disk space")
+        
+        # Still fail clean
+        return False
+    
+    # ... rest of load logic ...
+```
+
+**Fix B destroys:**
+- Recoverable data (any partial information)
+- User agency (no "load anyway" option)
+- Historical continuity (permanent loss)
+
+### Structural Invariant: **SESSION STATE ATOMICITY**
+
+Both fixes preserve that the session object is never in an inconsistent partial state. Fields (`total_cost_usd`, `total_input_tokens`, `total_output_tokens`, `turn_count`) are either:
+- **All loaded from valid file** (consistent with each other)
+- **All zero/None** (fresh session state)
+
+This invariant prevents internal inconsistency like `total_cost_usd > 0` but `total_input_tokens == 0` (impossible). The session state atomically transitions from "unloaded" to "valid" or stays at "fresh" — never an intermediate corrupted state.

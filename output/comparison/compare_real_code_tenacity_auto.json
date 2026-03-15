@@ -1,0 +1,244 @@
+{
+  "target": "real_code_tenacity.py",
+  "lines": 331,
+  "mode": "auto",
+  "timestamp": "2026-03-04T19:31:11",
+  "full_prism": {
+    "bugs_found": 39,
+    "bugs_fixed": 34,
+    "cost": 2.8975650500000003,
+    "duration_ms": 3003950,
+    "issues": [
+      {
+        "title": "#1: Timing window: stop_run_result evaluated AFTER _run_retry ad",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Time-based stop predicates must be evaluated before retry state is committed to capture current elapsed time."
+      },
+      {
+        "title": "#2: No assertion that retry_state.outcome is non-None when predi",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Retry predicates must only be called when retry_state.outcome is non-None"
+      },
+      {
+        "title": "#3: retry_error_callback exception handling undefined. If callba",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "User-provided callback exceptions must be caught to prevent uncaught propagation to iter() callers"
+      },
+      {
+        "title": "#4: Thread-local cache corruption: self._local.statistics = copy",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Thread-local storage must not be synchronized across instances to maintain per-thread isolation in concurrent scenarios"
+      },
+      {
+        "title": "#5: iter_state.reset() clears actions at iteration start. If act",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "State reset should occur between retry attempts, not on every iter() call, to prevent callbacks with side effects from re-executing"
+      },
+      {
+        "title": "#6: Returns None if outcome_timestamp unset. Stored in statistic",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "seconds_since_start property must return a numeric value in all cases, not None, to prevent TypeError crashes in stop predicates that perform delay calculations."
+      },
+      {
+        "title": "#7: TryAgain exception forces retry by setting is_explicit_retry",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Stop conditions must apply to all retries, including explicit TryAgain retries"
+      },
+      {
+        "title": "#8: Statistics state inconsistent during exceptions. If copy(f, ",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Statistics reference must only be assigned after the wrapped call completes successfully, preventing torn state visibility during concurrent access when exceptions occur."
+      },
+      {
+        "title": "#9: retry_state exposed to caller via AttemptManager. User code ",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Internal retry state must be private to prevent caller code from directly corrupting state via public attribute access."
+      },
+      {
+        "title": "#10: NO_RESULT = object() defined but never referenced. Dead code",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Unused module-level definitions should not persist in production code"
+      },
+      {
+        "title": "#11: Never called, but broken: Future.set_exception() (from concu",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Future.set_exception() requires an exception instance, not an exc_info tuple"
+      },
+      {
+        "title": "#12: When is_explicit_retry=True, _run_retry is not called, so it",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "State field must accurately represent actual behavior: retry_run_result must be True whenever a retry occurs, independent of code path taken (exception-triggered vs explicit flag)"
+      },
+      {
+        "title": "#13: _run_wait (wait computation) always runs before _run_stop (s",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Wait computation must only execute if stop condition is false"
+      },
+      {
+        "title": "#14: wrapped_f.retry = self stores reference to Retrying instance",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Wrapped functions must not hold strong references to their Retrying instance, as this couples the wrapped function's lifecycle to the retry object and prevents proper garbage collection when retry_with() creates copies."
+      },
+      {
+        "title": "#15: prepare_for_next_attempt() called BEFORE self.sleep(do). If ",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "State mutation must not precede potentially-blocking operations; sleep exceptions must not corrupt retry_state by leaving it pre-incremented"
+      },
+      {
+        "title": "#16: No thread-safety guarantee on outcome mutations. Two threads",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Concurrent outcome mutations must be protected by a lock"
+      },
+      {
+        "title": "#Meta-Law: Impossible Triplet: OVERCLAIM / FALSIFIED",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Exception handler must not over-specify the condition for exception recording by redundantly checking both exc_type and exc_value when exc_type alone is sufficient and guaranteed non-None when an exception occurs."
+      },
+      {
+        "title": "#A: wrapped_f.statistics is a function attribute, SHARED across ",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Mutable statistics must not be stored in function attributes shared across threads; thread-local access via decorator instance ensures concurrent safety"
+      },
+      {
+        "title": "#B: Misnamed. Value is OVERWRITTEN each iteration with current a",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Timing metrics overwritten each iteration must not have names implying accumulation."
+      },
+      {
+        "title": "#C: All user callbacks (before, after, before_sleep, retry_error",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#D: retry_state is public attribute on AttemptManager. User code",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#1: Stop checked after wait; wait computed even if stop will be ",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Stop condition must be evaluated immediately before computing wait time, not via separate prior action."
+      },
+      {
+        "title": "#2: Analysis claimed outcome could be None",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "outcome must be non-None before accessing its exception() method in error-handling path"
+      },
+      {
+        "title": "#3: Callback exception uncaught",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Callback exceptions must propagate to the caller, not be silently suppressed by broad exception handling."
+      },
+      {
+        "title": "#4: Analysis: thread-local corruption",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Thread-local iteration state must be reset when each retry attempt begins to prevent action accumulation from previous retries."
+      },
+      {
+        "title": "#5: Analysis: double-queueing possible",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Synchronization lock must be initialized in constructor before concurrent access, not lazily during exception handling"
+      },
+      {
+        "title": "#6: Returns None when outcome_timestamp unset",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "seconds_since_start must return None when outcome_timestamp is unset, not a synthetic elapsed time"
+      },
+      {
+        "title": "#7: TryAgain bypasses stop_after_attempt",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "TryAgain exceptions must be suppressed only if the stop condition has not been met; otherwise the exception must propagate to terminate retries"
+      },
+      {
+        "title": "#8: Exception during copy leaves wrapped_f.statistics partial",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#9: retry_state exposed; user can corrupt",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Internal mutable state must use name mangling to prevent direct user access"
+      },
+      {
+        "title": "#10: NO_RESULT = object() never used",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#11: Never called; broken exc_info handling",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Never-called Future.construct classmethod must be invoked to centralize Future initialization and ensure consistent exc_info handling"
+      },
+      {
+        "title": "#12: Flag hides that retry_run_result not set for TryAgain",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "When TryAgain exception is caught, retry_run_result flag must be set to indicate an explicit retry attempt."
+      },
+      {
+        "title": "#13: Wait computed before stop check",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Stop condition must be checked once before computing wait time, not earlier as part of retry-state classification"
+      },
+      {
+        "title": "#14: wrapped_f.retry stores reference; multiple calls accumulate",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Wrapped functions must not store references to mutable decorator instances that accumulate state across invocations"
+      },
+      {
+        "title": "#15: State mutated before sleep; if sleep raises, pre-incremented",
+        "fixed": false,
+        "reason": "bad json"
+      },
+      {
+        "title": "#16: No thread-safety on outcome mutations; races possible",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Outcome mutations must be protected by a reentrant lock to ensure thread-safe atomic updates across all callers"
+      },
+      {
+        "title": "#18: statistics dict is mutable; concurrent calls to same instanc",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Each retry attempt must have its own independent statistics dictionary to prevent concurrent threads from racing on shared mutable state"
+      },
+      {
+        "title": "#B (misleading name): MEDIUM",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Elapsed time for each retry attempt must be measured from when that specific attempt starts, not from the beginning of all retries"
+      }
+    ],
+    "analysis_length": 49290
+  }
+}

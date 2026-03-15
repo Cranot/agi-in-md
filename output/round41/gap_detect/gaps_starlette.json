@@ -1,0 +1,94 @@
+```json
+[
+  {
+    "claim": "compile_path function (lines 51-76)",
+    "type": "TEMPORAL",
+    "fill_source": "CHANGELOG",
+    "query": "What Starlette version was analyzed and do line numbers 51-76 correspond to the compile_path function?",
+    "risk": "HIGH",
+    "impact": "All specific defect locations become unverifiable if version doesn't match",
+    "confidence": 0.5
+  },
+  {
+    "claim": "Mount(\"/api/{version}\", routes=[Route(\"/users\", users_endpoint)])  # becomes /api/v1/users",
+    "type": "CONFABULATED",
+    "fill_source": "API_DOCS",
+    "query": "Does the example correctly show how path parameters are substituted in Starlette routes?",
+    "risk": "MEDIUM",
+    "impact": "Example may confuse route definition with route matching behavior",
+    "confidence": 0.6
+  },
+  {
+    "claim": "Quadratic Redirect Behavior... when `redirect_slashes=True` (default), a request requiring redirect triggers two full linear scans. This is O(n) + O(n)... quadratic",
+    "type": "CONFABULATED",
+    "fill_source": "BENCHMARK",
+    "query": "Does two linear scans (O(n) + O(n)) constitute quadratic behavior or linear with a constant factor?",
+    "risk": "HIGH",
+    "impact": "Fundamental misunderstanding of algorithmic complexity undermines technical accuracy",
+    "confidence": 0.2
+  },
+  {
+    "claim": "No freeze/lock API exists after route registration",
+    "type": "ASSUMED",
+    "fill_source": "API_DOCS",
+    "query": "Does Starlette provide any freeze, lock, or immutable route registration API?",
+    "risk": "MEDIUM",
+    "impact": "Cache invalidation problem may be solvable if freeze API exists",
+    "confidence": 0.4
+  },
+  {
+    "claim": "When nested mounts use `name=None`, identical route names in different branches collide. The first match wins",
+    "type": "ASSUMED",
+    "fill_source": "API_DOCS",
+    "query": "What is the exact search order in Mount.url_path_for when resolving nested routes with name=None?",
+    "risk": "MEDIUM",
+    "impact": "Namespace collision behavior may differ from described",
+    "confidence": 0.7
+  },
+  {
+    "claim": "The scope mutation logic for `root_path` appears in both `Mount.matches` and `Route.matches`. Duplicated code",
+    "type": "CONTEXTUAL",
+    "fill_source": "BENCHMARK",
+    "query": "Do Mount.matches and Route.matches contain identical root_path mutation logic?",
+    "risk": "MEDIUM",
+    "impact": "Duplication claim may be incorrect if implementation differs",
+    "confidence": 0.6
+  },
+  {
+    "claim": "malformed paths can still cause `re.compile()` to raise `re.error` at runtime",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "Does Python's re module raise re.error for malformed patterns?",
+    "risk": "LOW",
+    "impact": "Error handling claim may be incorrect if exception type doesn't exist",
+    "confidence": 0.9
+  },
+  {
+    "claim": "asyncio.RWLock as improvement",
+    "type": "CONFABULATED",
+    "fill_source": "API_DOCS",
+    "query": "Does Python's asyncio module include an RWLock class in the standard library?",
+    "risk": "HIGH",
+    "impact": "Proposed cache solution is non-functional if RWLock doesn't exist",
+    "confidence": 0.1
+  },
+  {
+    "claim": "The design assumes routes are configured once at startup",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "Does Starlette design documentation indicate that route mutation after startup is discouraged?",
+    "risk": "HIGH",
+    "impact": "Entire conservation law framework changes if dynamic routes are intended",
+    "confidence": 0.5
+  },
+  {
+    "claim": "This is sensible for most applications",
+    "type": "ASSUMED",
+    "fill_source": "MARKET",
+    "query": "Do most production Starlette applications actually not need high-performance routing?",
+    "risk": "HIGH",
+    "impact": "Trade-off narrative could be inverted if high performance is commonly needed",
+    "confidence": 0.3
+  }
+]
+```

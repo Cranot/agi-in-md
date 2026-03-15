@@ -1,0 +1,168 @@
+
+============================================================
+  COMPARISON: real_code_tenacity.py (331 lines)
+  Mode: auto
+============================================================
+
+============================================================
+  PIPELINE: Full Prism
+============================================================
+
+  [1] L12 scan  (+ adversarial + synthesis)...
+      L12 output: 20886 chars, $0.0961
+      Adversarial challenge...
+      Adversarial output: 15760 chars, $0.1358
+      Synthesis...
+      Synthesis output: 12581 chars, $0.0887
+
+  [2] Extracting issues...
+      TABLE SKIP #E: structural (Analysis presented code fragment as if i)
+      TABLE SKIP #3b: structural (Not Identified)
+      TABLE SKIP #4b: structural (Not Identified)
+      TABLE SKIP #17: structural (Not Identified)
+      Parsed bug table: 43 rows, 39 fixable
+      Extracted 39 issues from bug table (no API call)
+      Extracted 39 issues
+
+  [2/2] Fixing 39 issues (pass 1)...
+    [1/39] #1: Timing window: stop_run_result evaluated AFTER _run
+      SKIP: def _run_retry|def _run_stop|seconds_since_start|s
+    [2/39] #2: No assertion that retry_state.outcome is non-None w
+      APPLIED (exact) | $0.0601
+    [3/39] #3: retry_error_callback exception handling undefined. 
+      APPLIED (indent-normalized) | $0.0582
+    [4/39] #4: Thread-local cache corruption: self._local.statisti
+      APPLIED (exact) | $0.0517
+    [5/39] #5: iter_state.reset() clears actions at iteration star
+      APPLIED (exact) | $0.0511
+    [6/39] #6: Returns None if outcome_timestamp unset. Stored in 
+      APPLIED (exact) | $0.0212
+    [7/39] #7: TryAgain exception forces retry by setting is_expli
+      APPLIED (exact) | $0.0749
+    [8/39] #8: Statistics state inconsistent during exceptions. If
+      APPLIED (exact) | $0.0250
+    [9/39] #9: retry_state exposed to caller via AttemptManager. U
+      APPLIED (exact) | $0.0189
+    [10/39] #10: NO_RESULT = object() defined but never referenced.
+      APPLIED (exact) | $0.0244
+    [11/39] #11: Never called, but broken: Future.set_exception() (
+      APPLIED (exact) | $0.0267
+    [12/39] #12: When is_explicit_retry=True, _run_retry is not cal
+      SKIP: if.*is_explicit_retry.*:|_run_retry.*is_explicit_r
+    [13/39] #13: _run_wait (wait computation) always runs before _r
+      APPLIED (exact) | $0.0873
+    [14/39] #14: wrapped_f.retry = self stores reference to Retryin
+      APPLIED (exact) | $0.0534
+    [15/39] #15: prepare_for_next_attempt() called BEFORE self.slee
+      FAIL: syntax error after patch
+    [16/39] #16: No thread-safety guarantee on outcome mutations. T
+      APPLIED (exact) | $0.0613
+    [17/39] #Meta-Law: Impossible Triplet: OVERCLAIM / FALSIFIED
+      APPLIED (exact) | $0.0453
+    [18/39] #A: wrapped_f.statistics is a function attribute, SHARE
+      APPLIED (exact) | $0.0529
+    [19/39] #B: Misnamed. Value is OVERWRITTEN each iteration with 
+      APPLIED (exact) | $0.0504
+    [20/39] #C: All user callbacks (before, after, before_sleep, re
+      SKIP: def __iter__\|def .*iter.*\|self\.before(\|self\.a
+    [21/39] #D: retry_state is public attribute on AttemptManager. 
+      SKIP: def retry_state
+    [22/39] #1: Stop checked after wait; wait computed even if stop
+      APPLIED (exact) | $0.0822
+    [23/39] #2: Analysis claimed outcome could be None
+      APPLIED (indent-normalized) | $0.0740
+    [24/39] #3: Callback exception uncaught
+      APPLIED (exact) | $0.0742
+    [25/39] #4: Analysis: thread-local corruption
+      APPLIED (exact) | $0.0536
+    [26/39] #5: Analysis: double-queueing possible
+      APPLIED (exact) | $0.0454
+    [27/39] #6: Returns None when outcome_timestamp unset
+      APPLIED (exact) | $0.0620
+    [28/39] #7: TryAgain bypasses stop_after_attempt
+      APPLIED (exact) | $0.0438
+    [29/39] #8: Exception during copy leaves wrapped_f.statistics p
+      SKIP: wrapped_f.statistics|def __copy__|def __deepcopy__
+    [30/39] #9: retry_state exposed; user can corrupt
+      APPLIED (exact) | $0.0616
+    [31/39] #10: NO_RESULT = object() never used
+      SKIP: NO_RESULT\s*=\s*object\(\)
+    [32/39] #11: Never called; broken exc_info handling
+      APPLIED (exact) | $0.0433
+    [33/39] #12: Flag hides that retry_run_result not set for TryAg
+      APPLIED (exact) | $0.0630
+    [34/39] #13: Wait computed before stop check
+      APPLIED (exact) | $0.0927
+    [35/39] #14: wrapped_f.retry stores reference; multiple calls a
+      APPLIED (exact) | $0.0492
+    [36/39] #15: State mutated before sleep; if sleep raises, pre-i
+      SKIP: attempt.*\+=.*
+.*time\.sleep|attempt_number.*\+=|t
+    [37/39] #16: No thread-safety on outcome mutations; races possi
+      APPLIED (exact) | $0.1187
+    [38/39] #18: statistics dict is mutable; concurrent calls to sa
+      APPLIED (exact) | $0.0227
+    [39/39] #B (misleading name): MEDIUM
+      APPLIED (exact) | $0.0763
+
+  After pass 1: 31/39 fixed
+
+  --- Pass 2: retrying 8 unfixed ---
+
+  [2/2] Fixing 8 issues (pass 2)...
+    [1/39] #1: Timing window: stop_run_result evaluated AFTER _run
+      SKIP: def _run_stop|seconds_since_start.*=.*time|def _ru
+    [12/39] #12: When is_explicit_retry=True, _run_retry is not cal
+      APPLIED (exact) | $0.0619
+    [15/39] #15: prepare_for_next_attempt() called BEFORE self.slee
+      FAIL: syntax error after patch
+    [20/39] #C: All user callbacks (before, after, before_sleep, re
+      SKIP: self\.before\(|self\.after\(|self\.before_sleep\(
+    [21/39] #D: retry_state is public attribute on AttemptManager. 
+      SKIP: def retry_state\(
+    [29/39] #8: Exception during copy leaves wrapped_f.statistics p
+      SKIP: wrapped_f.statistics|def.*wrap.*copy|statistics.*c
+    [31/39] #10: NO_RESULT = object() never used
+      SKIP: NO_RESULT
+    [36/39] #15: State mutated before sleep; if sleep raises, pre-i
+      SKIP: attempt\s*\+=\s*1|self\.attempt\s*\+=|def.*(attemp
+
+  After pass 2: 32/39 fixed
+
+  --- Pass 3: retrying 7 unfixed ---
+
+  [2/2] Fixing 7 issues (pass 3)...
+    [1/39] #1: Timing window: stop_run_result evaluated AFTER _run
+      APPLIED (exact) | $0.0458
+    [15/39] #15: prepare_for_next_attempt() called BEFORE self.slee
+      APPLIED (exact) | $0.0598
+    [20/39] #C: All user callbacks (before, after, before_sleep, re
+      SKIP: self\.(before|after|before_sleep|retry_error_callb
+    [21/39] #D: retry_state is public attribute on AttemptManager. 
+      SKIP: def retry_state|@property.*retry_state|self\.retry
+    [29/39] #8: Exception during copy leaves wrapped_f.statistics p
+      SKIP: def __copy__|def __deepcopy__|wrapped_f.*statistic
+    [31/39] #10: NO_RESULT = object() never used
+      SKIP: NO_RESULT\s*=\s*object
+    [36/39] #15: State mutated before sleep; if sleep raises, pre-i
+      FAIL: invalid JSON
+
+  After pass 3: 34/39 fixed
+
+  Result: 34/39 fixed, $2.8976
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                        Full Prism
+  ────────────────────────────────────────────────
+  Bugs found                                    39
+  Bugs fixed                                    34
+  Fix rate                                     87%
+  Cost                           $          2.8976
+  Time                                     3003.9s
+
+  Results saved: ./output\comparison\compare_real_code_tenacity_auto.json
+
+  Done!

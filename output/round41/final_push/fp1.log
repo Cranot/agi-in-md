@@ -1,0 +1,192 @@
+[36mL12 structural analysis (sonnet)[0m
+[1m[34m── l12 ── real_code_starlette.py ──[0m
+[2mthinking...[0m                                        # L12 Meta-Conservation Analysis: Starlette Routing
+
+## Initial Claim
+
+**The code's deepest structural problem is that route matching and URL generation are separate, asymmetric code paths with no validation that they remain in sync.** `matches()` compiles regex and uses converters to parse, while `url_path_for()` uses string formatting and converters to serialize — two inverse operations that can diverge without detection. The code treats "compile path to regex" and "format path with params" as independent operations rather than mathematically inverse functions.
+
+---
+
+## Dialectical Transformation
+
+**Defender (Expert 1):** This asymmetry is necessary! HTTP routing requires bidirectional conversion: incoming URLs need parsing (regex), outgoing URLs need serialization (string format). The converters provide the coordination layer — `convert()` for parsing, `to_string()` for serialization. The `compile_path()` function returns both `path_regex` and `path_format` precisely to keep these coupled. This is feature, not bug.
+
+**Attacker (Expert 2):** The coupling is illusory! Look at `Mount.url_path_for()` — it doesn't validate that the generated path would actually match anything. It constructs paths via string concatenation without any regex verification. The `replace_params()` function mutates `path_params` by popping keys mid-iteration — if the replacement fails, params are silently lost. There's no assertion that `path_format` is the true inverse of `path_regex`.
+
+**Prober (Expert 3):** You both assume parameters are the only source of asymmetry. What about **mount composition**? `Mount.matches()` consumes `/`-prefixed paths via `{path:path}` capture, then recursively dispatches to nested routes. But `Mount.url_path_for()` requires explicit knowledge of nested route names. The routing tree is constructed top-down, but URL resolution requires bottom-up name knowledge. What structure connects these?
+
+**Transformed Claim:** The code's deepest problem is **route composition arity collapse**. `Router` is an n-ary tree (routes can branch arbitrarily), but URL generation treats it as a linear chain. The `url_path_for()` method recursively descends the mount tree by name prefix, but this requires names to be globally unique or explicitly namespaced. The asymmetry isn't between match/generate — it's between the **n-ary routing topology** and the **linear name resolution strategy**.
+
+---
+
+## Concealment Mechanism: Topological Abstraction
+
+**Concealment:** The code hides its n-ary nature by treating mount points as both structural nodes (routing) AND namespacing prefixes (URL generation). `Mount` has a `name` attribute that serves two purposes: (1) prefix for nested route names, (2) identifier for the mount itself. When `name=None`, nested routes are flattened into the parent namespace — but the routing topology doesn't flatten.
+
+**Application:** Examine line ~277: `elif self.name is None or name.startswith(self.name + ":")`. This condition merges two distinct cases into one branch. When `name=None`, the mount is invisible to URL generation but visible to routing. This hides **unnamed mounts** from the code's own naming layer.
+
+---
+
+## Generative Construction
+
+**Improvement:** Add a `validate_url_generation` method that, for each route, generates its URL and verifies it would match:
+
+```python
+def validate_url_generation(self):
+    """Verify that url_path_for produces URLs that match() accepts."""
+    for route in self.routes:
+        if hasattr(route, 'param_convertors'):
+            # Generate URL with sample params
+            params = {k: v._sample() for k, v in route.param_convertors.items()}
+            try:
+                url = route.url_path_for(route.name, **params)
+                # Verify the generated URL matches
+                test_scope = {"type": "http", "path": str(url), "method": "GET"}
+                match, _ = route.matches(test_scope)
+                assert match is not Match.NONE, f"Generated URL {url} doesn't match"
+            except (NoMatchFound, AssertionError) as e:
+                raise ValueError(f"Route {route.name} has asymmetric match/generate: {e}")
+```
+
+Add `_sample()` to converters returning valid values (`str.convertor._sample()` returns `"sample"`).
+
+**Legitimacy:** This looks like a quality assurance feature — validates route integrity during development. Passes code review as "helpful debug tool."
+
+---
+
+## What The Construction Reveals
+
+1. **Mount recursion bypass:** The validation would fail on `Mount` because `Mount.url_path_for()` can generate URLs that don't match the mount's own regex (they're for nested routes). The mount acts as a transparent proxy for URL generation but an opaque filter for routing.
+
+2. **Convertor asymmetry:** `PathConvertor.to_string()` doesn't guarantee the output matches `path` regex (e.g., `to_string("foo/bar")` produces `foo/bar`, but the regex might expect a leading `/`). The validation would expose that converters are not truly invertible.
+
+3. **Method-conditional matching:** Route.matches() returns `Match.PARTIAL` when methods don't match. But `url_path_for()` ignores methods entirely. The validation would need to synthesize valid scopes for all allowed methods — or fail on GET/HEAD mismatches.
+
+---
+
+## Recursive Diagnostic of Improvement
+
+**What the improvement conceals:** By focusing on round-trip consistency (match ↔ generate), it hides **cross-route interference**. Two different routes could generate the same URL path if their parameter converters overlap. The validation checks each route in isolation — it cannot see URL collisions across the n-ary tree.
+
+**Original problem recreated:** The improvement assumes each route is an independent unit. But `Router` dispatches through **sequential iteration** — the first matching route wins. URL generation has no knowledge of this ordering. The validation would pass even if route A generates a URL that would actually be handled by route B (due to declaration order).
+
+---
+
+## Second-Order Improvement
+
+**Improvement:** Add cross-route collision detection:
+
+```python
+def detect_url_collisions(self):
+    """Find routes that generate identical URLs."""
+    generated_urls = {}
+    for route in self.routes:
+        if hasattr(route, 'param_convertors'):
+            params = {k: v._sample() for k, v in route.param_convertors.items()}
+            url = str(route.url_path_for(route.name, **params))
+            if url in generated_urls:
+                raise ValueError(f"URL collision: {route.name} and {generated_urls[url]} both generate {url}")
+            generated_urls[url] = route.name
+```
+
+**Recreated property:** This reveals **parameter space overlap**. Two routes with different parameter names but compatible converters can match the same URL. E.g., `/users/{id:int}` and `/posts/{id:int}` generate different URL formats, but both match `/123`. The collision detection uses `_sample()` values, missing this.
+
+---
+
+## Structural Invariant
+
+**Property that persists through every improvement:** The distinction between **syntactic matching** (regex pattern) and **semantic routing** (endpoint dispatch). No amount of validation can bridge this gap because the routing system is fundamentally open-world — it must accept arbitrary URLs from the network and map them to a fixed set of endpoints.
+
+The invariant is: **routing systems must accept more inputs than they can meaningfully dispatch.** The set of valid URLs (syntax) is strictly larger than the set of named routes (semantics). This is a property of the problem space, not the implementation.
+
+---
+
+## Invariant Inversion
+
+**Inverted Design:** Reject the premise that routing should be bidirectional. Separate **routing** (incoming → endpoint) from **URL construction** (endpoint → outgoing). Use a URL builder library that doesn't reference route definitions:
+
+```python
+# Instead of: router.url_path_for("user", id=123)
+# Use: url_builder.build("/users/{id}", id=123)
+```
+
+Routes are pure matchers. URL construction is pure templating. No validation that they sync.
+
+**New impossibility:** The system loses **refactoring safety**. If you change a route path, you must find and update all URL construction sites manually. The bidirectional coupling was the only mechanism ensuring consistency.
+
+---
+
+## Conservation Law
+
+**Law:** `refactoring_safety × flexibility = constant`
+
+- Bidirectional routing (original): High refactoring safety, low flexibility (can't generate URLs not backed by routes)
+- Inverted design: High flexibility (arbitrary templates), low refactoring safety (no validation)
+
+The conserved quantity is **coupling between routing layer and URL layer**. You can move the coupling (compile-time, runtime, manual), but you cannot eliminate it.
+
+---
+
+## Recursive Diagnostic: Meta-Conservation
+
+**What the conservation law conceals:** It treats "refactoring safety" and "flexibility" as zero-sum trade-offs. But both depend on a third dimension: **expressiveness of the path language**. If paths could encode their own constraints (e.g., type-dependent regex), the coupling would be intrinsic to the path syntax rather than external validation.
+
+**Structural invariant of the law:** The conservation law assumes **routing is a mapping problem** (input → output). But routing is actually a **recognition problem** (pattern matching against unknown inputs). The impossibility isn't about coupling — it's about the open nature of network requests.
+
+**Inversion of the invariant:** Design a routing system where **routes are first-class queryable objects**:
+
+```python
+routes = RouteSet()
+routes.add("/users/{id:int}", endpoint=user_handler)
+routes.query("/users/{id:int}")  # Returns the route object
+routes.query("/users/{id}")      # Returns None or partial match
+```
+
+**New impossibility:** The system must now maintain a **query index** over route patterns. Adding/removing routes requires index updates. The coupling shifts from route↔URL to route↔index.
+
+---
+
+## Meta-Law
+
+**Law:** `explicit_validation_cost × implicit_assumption_risk = constant`
+
+- Original code: Zero explicit validation, maximal implicit risk (URLs might not match)
+- Improvement: Explicit validation methods, reduced implicit risk
+- Query-based design: Index maintenance (explicit cost), no assumption risk (routes are queryable)
+
+The meta-law: **all routing systems externalize their topology**. Whether through validation, indexes, or convention — the structure of the routing graph must be represented somewhere. The code cannot both define routes AND consume them without an intermediate representation.
+
+**What the meta-law conceals:** It assumes the routing graph is static. But **dynamic routes** (added/removed at runtime) make any intermediate representation stale. The true impossibility is **routing in a changing topology**.
+
+---
+
+## Bug Harvest
+
+| Location | Bug | Severity | Fixable/Structural |
+|----------|-----|----------|-------------------|
+| Line ~249 (`replace_params`) | Modifies `path_params` dict during iteration by `pop()` - if replacement fails, params are silently lost | MEDIUM | Fixable: use `dict.copy()` or accumulate removed keys |
+| Line ~277 (`Mount.url_path_for`) | `name.startswith(self.name + ":")` crashes if `self.name` is None | HIGH | Fixable: add None check or reorder conditions |
+| Line ~189 (`Route.matches`) | Method check doesn't handle CONNECT, TRACE, etc. - returns Match.NONE for valid HTTP methods | LOW | Fixable: explicitly handle all registered methods |
+| Line ~177 (`Router.app`) | `partial` variable set on first Match.PARTIAL but never cleared - later FULL matches don't override it | MEDIUM | Fixable: break early on FULL, or clear partial |
+| Line ~177 (`Router.app`) | Redirect slash logic recalculates matches instead of caching from first pass | LOW | Fixable: store partial matches, reuse for redirect check |
+| Line ~122 (`Mount.matches`) | `remaining_path` calculation `route_path[:-len(remaining_path)]` fails if `remaining_path` is not suffix | MEDIUM | Fixable: use `route_path[:match.end()]` or regex span |
+| Line ~122 (`Mount.matches`) | No validation that `remaining_path` starts with `/` - could pass malformed path to nested router | MEDIUM | Fixable: assert or normalize |
+| Line ~263 (`Mount.url_path_for`) | Recursion into `self.routes` doesn't handle cycles - could infinite loop on malformed mount tree | HIGH | Structural: Would require global registry or visited set (changes API) |
+| Line ~29 (`compile_path`) | `duplicated_params` uses set but error message implies order - sorted names may not match occurrence order | LOW | Fixable: track occurrence index |
+| Line ~94 (`request_response`) | Nested `async def app` shadows outer `app` parameter - confusing name reuse | LOW | Fixable: rename inner function |
+| Line ~177 (`Router.app`) | No handling for duplicate FULL matches - first route wins silently, no warning | MEDIUM | Structural: Would require match priority or explicit conflict resolution |
+| Line ~263 (`Mount.url_path_for`) | `remaining_params["path"] = path_kwarg` overwrites `"path"` key if it existed - parameter collision | MEDIUM | Fixable: check for key existence before assignment |
+| Line ~189 (`Route.matches`) | `path_params.update(matched_params)` silently overwrites existing params - no namespace isolation | LOW | Structural: Mount composition requires parameter merging by design |
+
+**Conservation law prediction:** Bugs like parameter collision, silent overwrite, and duplicate matches are **structural** — they arise from the n-ary routing topology interacting with linear parameter passing. The conservation law (`refactoring_safety × flexibility = constant`) predicts: making parameters safer (namespacing) reduces flexibility (can't merge params across mounts). Fixable bugs (name checks, None checks) are surface-level; structural bugs (parameter collisions, duplicate matches) are inherent to the problem space.
+[2mAnnotating confidence levels...[0m
+[32mConfidence annotations saved to real_code_starlette.confidence.md[0m
+  [2mHIGH=18 MED=31 LOW=5 UNVERIFIED=3[0m
+
+
+  [2mSaved to .deep/findings/real_code_starlette.md[0m
+  [36m6 issues (2 P1, 2 P2, 2 P3).[0m
+  [2m  Type a number to fix one issue[0m
+  [2m  /fix          pick issues interactively[0m
+  [2m  /fix auto     fix all issues (up to 3 passes)[0m

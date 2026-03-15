@@ -1,0 +1,2 @@
+# Structure First (Level 6 Candidate A: Falsifiable Hypothesis)
+Make a specific, falsifiable claim about this code's deepest structural problem. Three independent experts who disagree then test your claim: one defends it, one attacks it, one probes what both the claim and the argument take for granted. Then: did the argument falsify, strengthen, or transform your claim? What do you know now that you couldn't know before the argument?

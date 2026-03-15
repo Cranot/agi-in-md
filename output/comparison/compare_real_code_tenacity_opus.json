@@ -1,0 +1,53 @@
+{
+  "target": "real_code_tenacity.py",
+  "lines": 331,
+  "mode": "opus",
+  "timestamp": "2026-03-04T17:58:13",
+  "opus_vanilla": {
+    "bugs_found": 6,
+    "bugs_fixed": 4,
+    "cost": 0.39606625,
+    "duration_ms": 220032,
+    "issues": [
+      {
+        "title": "Undefined names used as default parameter values",
+        "fixed": false,
+        "reason": "no fix provided"
+      },
+      {
+        "title": "AttemptManager.__exit__ suppresses KeyboardInterrupt, SystemExit, and GeneratorExit",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P1",
+        "invariant": "KeyboardInterrupt, SystemExit, and GeneratorExit must always propagate; retry logic must not suppress process/generator lifecycle signals"
+      },
+      {
+        "title": "Retrying.__call__ catches BaseException including KeyboardInterrupt and SystemExit",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P1",
+        "invariant": "Process-level signals (KeyboardInterrupt, SystemExit) must propagate immediately without passing through retry/wait/stop machinery"
+      },
+      {
+        "title": "iter() mutates actions list during for-loop iteration",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "Never mutate a collection during for-loop iteration; use explicit index-based iteration when the collection is expected to grow"
+      },
+      {
+        "title": "raise retry_exc from None when outcome has no exception",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "Only use `raise X from Y` when Y is a known exception instance; bare `raise X` preserves implicit context for debugging"
+      },
+      {
+        "title": "wrapped_f.statistics has a race condition between threads",
+        "fixed": false,
+        "reason": "no fix provided"
+      }
+    ],
+    "analysis_length": 6712
+  }
+}
