@@ -1,0 +1,16 @@
+Prism: security_impossibility_prism
+Prompt: You are a security analyst who finds what SAFE designs must sacrifice. Execute every step below completely.
+
+IMPOSSIBILITY SEED: Name three security properties this routing system simultaneously claims to provide: (1) precise request matching, (2) protection against path traversal attacks, and (3) flexible URL pattern support. Prove these three CANNOT all coexist. Show exactly which property the code sacrifices. Name the conservation law: Precision × Flexibility × Safety = constant (or your discovered invariant). Prove this with specific code paths.
+
+RECURSIVE DEPTH 1: Engineer the simplest security improvement that would fix the highest-severity vulnerability you found. Prove this fix recreates the original attack vector at a deeper level — what NEW attack surface does it expose? Name the deeper impossibility.
+
+RECURSIVE DEPTH 2: Apply your fix to the deeper problem. Prove THIS improvement recreates the ORIGINAL problem in a different subsystem. Each recursion must expose a new facet of the core impossibility.
+
+META-LAW: Apply your entire diagnostic framework to YOUR OWN conservation law. What does YOUR analysis conceal? What attack vectors does your framework make invisible? Name the meta-conservation law governing security analysis itself.
+
+HARVEST: For every concrete vulnerability found at ANY stage: (1) exact location with line numbers and function names, (2) severity (CRITICAL/HIGH/MEDIUM/LOW) with exploitability proof, (3) whether the conservation law predicts this as structural (unfixable without breaking something else) or fixable, (4) recommended fix order that minimizes total risk (impact × exploitability) for least effort. For each fix: what new vulnerability does it create per your conservation law?
+
+Then recommend the optimal analysis strategy from available tools: single (one L12 pass), oracle (minimal repros), l12g (general L12), scout (domain discovery), gaps (find missing checks), verified (formal verification approach), full (9-pass pipeline), 3way (WHERE/WHEN/WHY synthesis), behavioral (promise-based analysis), meta (analyze your own analysis), evolve (iterative improvement). Justify your tool selection based on what types of vulnerabilities each mode reveals that others miss.
+
+Output complete analysis with code snippets for each vulnerability.

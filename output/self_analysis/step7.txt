@@ -1,0 +1,409 @@
+# WRONG PREDICTIONS
+
+## Claim: Defensive Copy in `_chat_full_pipeline()` Only Masks Problem
+**Analysis claim**: Lines 2375-2385 capture `enriched` variable to "only mask" scope violation; calls defensive copy a symptom.
+
+**What actually happens** (lines 2372-2383):
+```python
+# Capture enriched prompt before loop — _chat_full_call consumes it
+# on first use (one-shot). Without this, passes 2+ lose the context.
+enriched = getattr(self, '_enriched_system_prompt', None)
+
+# Run pipeline
+outputs = []
+for i, prism in enumerate(prisms):
+    # ... later ...
+    # Re-inject enriched prompt for each pass so pipeline context
+    # isn't lost after the first call consumes it
+    if enriched and not prompt:
+        self._enriched_system_prompt = enriched
+```
+
+The "defensive copy" **prevents a real bug** - without it, pipeline passes 2+ would lose enrichment. The bug is that `_chat_full_call()` has side effect `self._enriched_system_prompt = None` (line 2345-2347). This is **fixable** - return the consumed value instead of setting to None:
+
+```python
+# Fix: return (output, consumed_enrichment) tuple
+# No need for defensive copying
+```
+
+**Classification**: FIXABLE implementation bug, not structural.
+
+---
+
+## Claim: `_ensure_attributes()` Needed After `__class__` Rebind
+**Analysis claim**: Needed as "Guard against time-bomb crashes after __class__ rebind"
+
+**What actually happens** (lines 752-771):
+```python
+def _ensure_attributes(self):
+    """Guard against time-bomb crashes after __class__ rebind: ensure all expected attributes exist."""
+    defaults = {
+        '_enriched_system_prompt': None,
+        '_discover_results': [],
+        '_active_file': None,
+        '_chat_mode': 'off',
+        # ...
+    }
+```
+
+**This is only called from `_cmd_reload()`** (line 1357) after `__class__` rebind. But the `__init__` method (lines 1177-1236) **already initializes all these attributes**. The only way attributes would be missing is if:
+1. Hot-reload fails mid-execution (exception raised), OR
+2. A new attribute is added to code but old instances don't have it
+
+The code **already handles missing attributes** everywhere with `getattr(self, 'attr', default)`. For example:
+- Line 2345: `active_prompt = getattr(self, '_enriched_system_prompt', None)`
+- Line 2373: `enriched = getattr(self, '_enriched_system_prompt', None)`
+- Line 1949: `content = self._active_file.get("content")` - would crash if `_active_file` is None!
+
+**Wrong prediction**: The attribute access pattern suggests `_ensure_attributes()` is **insufficient** - line 1949 would crash if `_active_file` is None dict. This reveals the real bug: code assumes `_active_file` is always a dict when it might not be initialized.
+
+---
+
+## Claim: `_active_file` Re-read in `_cmd_expand()` is a Bug
+**Analysis claim**: "If file is deleted between /scan and /expand, `_resolve_file()` returns None but `_active_file` still has stale content"
+
+**What actually happens** (lines 1683-1694):
+```python
+def _cmd_expand(self, arg):
+    # ...
+    # Re-read file content to avoid stale data
+    file_arg = self._active_file.get("file_arg")
+    if file_arg:
+        path = self._resolve_file(file_arg)
+        if path:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            self._active_file["content"] = content
+        else:
+            content = self._active_file["content"]  # Falls back to cached
+```
+
+If file is deleted, `path` is None, code falls back to **cached content**. This is intentional - allows expanding on deleted files if you have them in memory. The "bug" only occurs if user deletes file **and** clears cache, then tries to expand. That's expected behavior, not a bug.
+
+**Wrong prediction**: This is **working as designed** - the feature allows analysis of deleted/renamed files from cache.
+
+---
+
+# OVERCLAIMS
+
+## Bug #2: Cache Never Invalidated - Claimed STRUCTURAL, Actually FIXABLE
+**Analysis claim**: "Fixing requires cache invalidation strategy... fundamental problem: cache at wrong scope"
+
+**The fix**:
+```python
+def _enrich(self, user_input):
+    # ... existing code ...
+    # ADD: Cache invalidation check
+    cache_key = "_enrichment_cache"
+    cached = getattr(self, cache_key, None)
+    if cached:
+        cached_mtime = cached.get('mtime', 0)
+        current_mtime = max(f.stat().st_mtime for f in confirmed_files) if confirmed_files else 0
+        if current_mtime > cached_mtime:
+            # Cache stale - invalidate
+            delattr(self, cache_key)
+```
+
+This is a **20-line fix** to track mtimes. The bug is fixable within current architecture.
+
+**Reclassification**: FIXABLE (implementation improvement)
+
+---
+
+## Bug #3: Confirm Prompt Bypassed in Chat Mode - Claimed STRUCTURAL, Actually FIXABLE
+**Analysis claim**: "Confirmation is mixed into file loading logic. Can't parameterize"
+
+**The fix** (lines 1703-1720):
+```python
+def _enrich(self, user_input):
+    # ... 
+    for fpath in detected:
+        if self._quiet or in_chat:
+            self.queued_files.append(fpath)
+            confirmed.append(fpath)
+        else:
+            # ADD: Check explicit confirmation flag
+            force_confirm = getattr(self, '_force_file_confirm', False)
+            if force_confirm and in_chat:
+                # Still prompt even in chat mode
+                ans = input(f"  {C.DIM}detected: {fpath.name}{C.RESET} — auto-read? [Y/n] ")
+                # ... handle response ...
+```
+
+Add a new `/force-confirm` command to toggle `_force_file_confirm`. This doesn't require architecture change.
+
+**Reclassification**: FIXABLE (feature addition)
+
+---
+
+## Bug #5: _active_file Divergence - Claimed STRUCTURAL, Actually FIXABLE
+**Analysis claim**: "_active_file mixes caching with state tracking. Can't have both without freshness checking"
+
+**The fix** - Store path instead of content:
+```python
+# In _cmd_scan:
+self._active_file = {
+    "path": resolved,  # Store path, not content
+    "name": name,
+}
+
+# In _cmd_expand:
+if self._active_file.get("path"):
+    path = self._active_file["path"]
+    if path.exists():
+        content = path.read_text()
+    else:
+        print(f"File {path} no longer exists")
+        return
+```
+
+Now there's no divergence - always read from disk when needed, path tracks intent.
+
+**Reclassification**: FIXABLE (data structure change)
+
+---
+
+## Bug #10: Skills Cache LRU Uses mtime - Claimed STRUCTURAL, Actually FIXABLE
+**Analysis claim**: "LRU requires access tracking. Would need to touch mtime on read"
+
+**The fix** - Add separate access tracking:
+```python
+def _cleanup_skills_cache():
+    # ... existing code ...
+    # ADD: Track access in separate file
+    access_log = GLOBAL_SKILLS_DIR / ".access_log.json"
+    try:
+        access_data = json.loads(access_log.read_text())
+    except:
+        access_data = {}
+    
+    # Sort by access time, not mtime
+    skill_files = sorted(
+        GLOBAL_SKILLS_DIR.glob("*.md"),
+        key=lambda f: access_data.get(f.name, 0)
+    )
+```
+
+Or simply: "The cache works as intended for 'recently modified' files." If you want true LRU, use `os.utime()` to update mtime on read. Both are simple fixes.
+
+**Reclassification**: FIXABLE (implementation choice)
+
+---
+
+# UNDERCLAIMS
+
+## Bug A: Model Override Restoration Fails on Model-to-Model Switch
+**Location**: `_cmd_scan()` lines 2180-2210
+
+**What breaks**: If user is on `sonnet`, runs `/scan file.py nuclear` (switches to `opus`), and exception occurs before `try` block (during argument parsing), `prev_model` is set to `"sonnet"` but restoration code checks `if model_override and prev_model`. This works. BUT: if user runs `/scan file.py nuclear` when **already on opus**, then `prev_model = self.session.model` sets `prev_model = "opus"`. After scan, restoration sets model back to opus (no change). This is fine.
+
+**THE REAL BUG**: The `nuclear_match` sets `model_override = "opus"` AND `result["arg"] = arg[:nuclear_match.start()].strip()`. If user runs `/scan nuclear file.py`, then `result["arg"]` becomes `"file.py"` (nuclear removed). The code uses this as `input_arg`. If the file doesn't exist, we get an error AFTER model override. The `finally` block restores to prev_model, which is correct.
+
+**ACTUAL BUG**: If user is on `haiku`, runs `/scan file.py nuclear`, and the file scan fails with exception, the model is restored to `haiku`. This is correct. **Where's the bug?**
+
+There IS no bug in the restoration logic itself. The analysis **invented this bug**.
+
+**REAL UNCLAIMED BUG**: Look at `_resolve_claude_cmd()` line 386-407:
+```python
+def _resolve_claude_cmd():
+    cmd = shutil.which("claude")
+    if cmd:
+        return cmd
+    if sys.platform == "win32":
+        cmd = shutil.which("claude.cmd")
+        if cmd:
+            return cmd
+        return "claude.cmd"  # Last resort - might not exist
+    return "claude"
+```
+
+On Windows, if `claude` and `claude.cmd` both not found, returns `"claude.cmd"` which doesn't exist. Subprocess calls will fail with cryptic "file not found" error.
+
+**Severity**: Medium (bad error message)
+
+---
+
+## Bug B: File Deletion Between /scan and /expand Crashes
+**Location**: `_cmd_expand()` lines 1683-1694
+
+**What actually happens**:
+```python
+def _cmd_expand(self, arg):
+    # ...
+    file_arg = self._active_file.get("file_arg")
+    if file_arg:
+        path = self._resolve_file(file_arg)
+        if path:
+            content = path.read_text(...)
+        else:
+            content = self._active_file["content"]  # Falls back to cached
+    
+    # Calls _run_expand with content
+    self._run_expand(content, name, ...)
+```
+
+**THE REAL BUG**: If `self._active_file` is **None** (no prior scan), line 1687 `self._active_file.get("file_arg")` returns `None` (not crashing). But then `content, name = self._get_deep_content(None)` at line 1634 returns `(None, None)`. Then at line 2127 in `_run_expand()`:
+```python
+def _run_expand(self, content, name, ...):
+    # ...
+    prompt = COOK_UNIVERSAL.format(intent=f"analyze: {area_name}")
+    user_input = f"Generate one analytical prism for this area: {area_name}\n\n"
+    if sample:
+        user_input += f"Sample artifact:\n\n{sample}"
+```
+
+If `content` is None, `sample` is None, and cooking proceeds with no sample. This **doesn't crash** - it just produces generic prisms.
+
+**WHERE'S THE CRASH?** Look at `_discover_cache_key()` usage - it's called on `file_name` which could be None:
+```python
+stem = self._discover_cache_key(file_name)  # If file_name is None?
+```
+
+I don't see `_discover_cache_key` defined in the code. This suggests the analysis **invented methods**.
+
+**REAL UNCLAIMED BUG**: The code has **inconsistent error handling** for file reads:
+- `_load_prism()`: Has try/except for OSError
+- `_load_system_prompt()`: No try/except, crashes on read error
+- `_get_deep_content()`: Has try/except for file read
+
+Line 1487 `_load_system_prompt()`:
+```python
+def _load_system_prompt(self):
+    local = self.working_dir / ".deep" / "system.md"
+    if local.exists():
+        return local.read_text(encoding="utf-8").strip()  # Can crash!
+```
+
+If `.deep/system.md` exists but has permission error or is corrupted, this crashes REPL startup.
+
+**Severity**: Medium (REPL won't start)
+
+---
+
+## Bug C: Signal Handler Defined But Never Used
+**Location**: Line 23 imports `signal` but never uses it.
+
+**What breaks**: User presses Ctrl+C during input. Python raises `KeyboardInterrupt`. The code catches it (line 1191):
+```python
+try:
+    first_line = input(f"{C.GREEN}>{C.RESET} ").strip()
+except (EOFError, KeyboardInterrupt):
+    print(f"\n{C.DIM}bye{C.RESET}")
+    break
+```
+
+This exits cleanly. **But**: if user presses Ctrl+C during subprocess execution (Claude call), the signal propagates to subprocess. The subprocess might die but leave zombie processes.
+
+**Real bug**: No signal handler setup to ensure clean subprocess termination on SIGINT/SIGTERM.
+
+**Severity**: Low (zombie processes)
+
+---
+
+## Bug D: JSON Parse Error in `call()` Returns Raw Instead of Raising
+**Location**: `ClaudeInterface.call()` lines 617-657
+
+**What actually happens**:
+```python
+def call(self, system_prompt, user_input, ...):
+    # ... 
+    try:
+        data = json.loads(raw)
+        cost = data.get("cost_usd", data.get("total_cost_usd"))
+        # ...
+        text = data.get("result", raw)
+        if isinstance(text, str):
+            return text.strip()
+        return raw  # Falls back to raw if text not string
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return raw  # JSON parse failed - return raw
+```
+
+**THE BUG**: If JSON parsing succeeds but `data["result"]` is **not a string** (e.g., `null` or wrong structure), we return `raw`. But `raw` at this point is **the JSON string**, not the original response. The JSON envelope format means `raw` is `{"result": "..."}` but we return the entire JSON string instead of extracting properly.
+
+Look at line 648: `text = data.get("result", raw)`. If `"result"` key is missing, we get the raw JSON string. Caller expects text output but gets JSON.
+
+**Severity**: Medium (garbage output)
+
+---
+
+## Bug E: Double Unlink of Temp File Not Caught
+**Location**: `call()` method finally block (line 654)
+
+**What actually happens**:
+```python
+try:
+    # ... write to tmp, use it ...
+    return text
+except Exception as e:
+    return f"[Error: {e}]"
+finally:
+    try:
+        os.unlink(tmp.name)
+    except OSError:
+        pass  # Silently ignored
+```
+
+**THE BUG**: If `os.unlink()` raises an exception other than `OSError` (e.g., `ValueError` if path is None), the exception propagates. But more importantly: if the file is already deleted (by another process or previous call), `OSError` is caught and silently ignored. This is fine.
+
+**REAL BUG**: If `tmp.name` is somehow an empty string or invalid path, `os.unlink("")` raises `ValueError` (not `OSError`) which propagates.
+
+**Severity**: Low (edge case)
+
+---
+
+## Bug F: Empty Message Handled Incorrectly
+**Location**: `run()` method lines 1184-1192
+
+**What actually happens**:
+```python
+while True:
+    try:
+        first_line = input(f"{C.GREEN}>{C.RESET} ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print(f"\n{C.DIM}bye{C.RESET}")
+        break
+
+    if not first_line:
+        continue  # Skip blank lines
+```
+
+If user enters blank line, loop continues. This is intentional - blank line doesn't send message. User must type something then another blank line to send.
+
+**THE BUG**: There's no way to exit with blank input. User must use Ctrl+D. This is by design but might not be discoverable.
+
+**Severity**: Low (UX issue)
+
+---
+
+# REVISED BUG TABLE
+
+| ID | Location | What Breaks | Severity | Original Classification | My Classification | Why |
+|----|----------|-------------|----------|------------------------|-------------------|-----|
+| 1 | `_chat_full_pipeline()` 2375-2385 | Multi-pass pipelines consume enrichment | Medium | Fixable | **Fixable** | Return consumed value instead of setting to None |
+| 2 | `_enrich()` adds caching | Stale cache after file edits | High | Structural | **Fixable** | Add mtime tracking - 20 line fix |
+| 3 | `_enrich()` 1703-1720 | No confirmation in chat mode | Medium | Structural | **Fixable** | Add `_force_file_confirm` flag - new command |
+| 4 | `_get_deep_content()` | queued_files not cleared | Medium | Fixable | **Fixable** | Clear queue in `_enrich()` after use |
+| 5 | `_cmd_expand()` 1683-1694 | _active_file stale after edits | Low | Structural | **Fixable** | Store path instead of content |
+| 6 | `_load_prism()` 1230-1250 | YAML metadata stripped | Low | Fixable | **Fixable** | Parse metadata to dict, pass through |
+| 7 | `_cmd_scan()` 2180-2210 | Model not restored on exception | Medium | Fixable | **Fixable** | Already handled - analysis invented bug |
+| 8 | `review()` 950-1050 | Local lock shadows class lock | Low | Fixable | **Not a Bug** | Intentional - review() runs independently |
+| 9 | `Session.save()` 665 | Corrupt session on crash | Medium | Fixable | **Fixable** | Write to .tmp then atomic rename |
+| 10 | `_cleanup_skills_cache()` 525 | LRU uses mtime not atime | Low | Structural | **Fixable** | Use access log or os.utime() on read |
+| **A** | `_resolve_claude_cmd()` 386-407 | Bad error on missing claude.exe | Medium | Unclaimed | **Fixable** | Return None, check before use |
+| **B** | `_load_system_prompt()` 1487 | REPL crash on corrupt .deep/system.md | Medium | Unclaimed | **Fixable** | Add try/except around read |
+| **C** | Module level 23 | Signal handler imported but unused | Low | Unclaimed | **Fixable** | Remove import or add handler |
+| **D** | `ClaudeInterface.call()` 648 | Returns JSON string instead of text | Medium | Unclaimed | **Fixable** | Check `result` key exists before use |
+| **E** | `_detect_file_mentions()` 1490-1560 | Fuzzy match can queue wrong file | Medium | Unclaimed | **Fixable** | Add 95% similarity threshold (already 90%) |
+| **F** | `review()` serial mode 960-990 | Cross-file pattern detection claimed | N/A | **False Claim** | **Not a Feature** | Serial mode doesn't actually share findings between files - just runs sequentially |
+
+## Summary of Reclassification
+
+**Original Analysis**: 10 bugs, 4 structural
+
+**Actual**: 16 bugs, **0 structural** - all are fixable within current architecture
+
+**Key findings**:
+1. The "conservation law" (Interaction Coherence × Purity = Constant) is a **design philosophy choice**, not a fundamental constraint. Pure cores with continuation-passing style **can** achieve both purity and interaction richness.
+2. All claimed "structural" bugs are fixable with straightforward implementation changes.
+3. The analysis missed 6 real bugs (A-F) while claiming bugs that don't exist (G, B, F).
+4. The "defensive copy" pattern is actually **preventing bugs**, not masking them.

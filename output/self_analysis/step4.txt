@@ -1,0 +1,316 @@
+## Step 1: Surface the Claim
+
+**What this artifact claims to be:**
+
+1. **File name & header:** `prism.py` — "Structural analysis through cognitive prisms"
+2. **Interface contracts (class names):**
+   - `ClaudeInterface` — "Abstraction layer for all Anthropic CLI interactions"
+   - `Session` — "Track session ID, model, and cumulative usage"
+   - `YieldTracker` — "Track which domains produce actionable findings"
+   - `SessionLog` — "The TRACK primitive. Persistent log of all operations"
+   - `StreamParser` — "Parse `claude -p --output-format stream-json` output"
+   - `ClaudeBackend` — "Manage `claude -p` subprocess"
+   - `PrismREPL` — "Main REPL loop with slash commands and streaming output"
+
+3. **Function promises (names/signatures):**
+   - `_resolve_claude_cmd()` — returns command that subprocess can find
+   - `call(self, system_prompt, user_input, model="haiku", timeout=120, output_format="text", ...)` — "Fire-and-forget call. Returns stdout text."
+   - `_cleanup_skills_cache()` — "LRU cleanup: delete oldest skill files if cache exceeds threshold"
+   - `_cmd_scan()` — "/scan <file|text|dir> [mode] — structural analysis"
+   - `review()` — "Non-interactive review mode"
+   - `_cmd_expand()` — "/expand <indices|*> [single|full] — cook + run prisms on discovered areas"
+
+4. **Configuration promises:**
+   - `.deep/config.json` controls prism selection and code extensions
+   - `DEFAULT_CONFIG = {"code_extensions": (...)}` — file type filtering
+   - `SKILLS_CACHE_MAX_SIZE_GB = 1.0` — cache size limits
+
+5. **What users expect:**
+   - A tool for running structural analysis through "cognitive prisms"
+   - Slash commands that do what they say
+   - Functions that return what their signature promises
+   - Predictable, single-responsibility components
+   - Proper abstraction layers (interface isolates implementation)
+
+---
+
+## Step 2: Trace the Displacement
+
+### **Displacement 1: `call()` claims text, internally uses JSON**
+
+**Location:** `ClaudeInterface.call()` (lines ~433-485)
+
+**Claim:** The method signature promises `output_format="text"` and docstring says "Returns stdout text."
+
+**Reality:** When `output_format="text"`, the method **sets `use_json = True`** (line 447) and internally calls the CLI with `--output-format json` (line 463), then **parses JSON to extract cost and text** (lines 470-483).
+
+**Evidence:**
+```python
+def call(self, system_prompt, user_input, model="haiku", timeout=120,
+         output_format="text", ...):
+    # ...
+    use_json = (output_format == "text")  # Line 447
+    wire_format = "json" if use_json else output_format  # Line 449
+    # ...
+    if use_json:
+        data = json.loads(raw)  # Line 471
+        cost = data.get("cost_usd", ...)
+        self.last_cost = cost
+        text = data.get("result", raw)
+        return text.strip()
+```
+
+**Displacement:** `call()` claims to be a simple text-return function but is actually a **cost-extracting JSON interceptor** masquerading as a text interface.
+
+---
+
+### **Displacement 2: `_cmd_scan()` claims to scan, actually routes to 9 different modes**
+
+**Location:** `PrismREPL._cmd_scan()` (lines ~1994-2188)
+
+**Claim:** Function name and help text imply it performs "structural analysis via cognitive prisms" via `/scan` command.
+
+**Reality:** The function is a **massive command router** that dispatches to 9+ different workflows:
+- Directory batch scanning (`_scan_directory`)
+- Full pipeline (`_run_full_pipeline`)
+- Domain discovery (`_run_discover`, `_run_discover_full`)
+- Domain expansion (`_run_expand`)
+- Targeted analysis (`_run_target`, `_run_deep`)
+- Optimization loops (`_run_optimize_loop`)
+- Fix loops (`_scan_fix_loop`)
+- Behavioral analysis (`_run_behavioral_pipeline`)
+- Project-level analysis with model overrides
+
+**Evidence:** Lines 2055-2164 show the function is a 100-line switch statement parsing modes and dispatching.
+
+**Displacement:** `_cmd_scan()` claims to be a scan command but is actually a **multi-mode command router**. The name "scan" is a historical artifact — the function's real job is "dispatch to any analysis mode."
+
+---
+
+### **Displacement 3: `review()` claims non-interactive, but `serial` mode does cross-file pattern detection**
+
+**Location:** `PrismREPL.review()` (lines ~1334-1449)
+
+**Claim:** Docstring says "Non-interactive review mode. Returns exit code." Parameter `serial` claims: "If True, run sequentially to detect cross-file patterns. Slower (2.7×) but catches recurring issues across files."
+
+**Reality:** In **parallel mode (default)**, files are analyzed **completely independently** (lines 1389-1414). The `serial` parameter controls a **fundamentally different algorithm**:
+- Parallel: 5 concurrent threads, no shared state, pure independence
+- Serial: sequential with `prior_findings` accumulation, adaptive prism ordering
+
+**Evidence:**
+```python
+# Lines 1374-1387 (serial mode)
+prior_findings = []  # Accumulate findings for cross-file context
+for fpath in files:
+    for prism in prisms:
+        result = self._run_prism_oneshot(prism, content, fpath.name)
+        # ...
+        if result and result.strip():
+            prior_findings.append({
+                "file": fpath.name, "prism": prism, "result": result[:500]
+            })
+
+# Lines 1389-1414 (parallel mode)
+def run_one(fpath, prism):
+    result = self._run_prism_oneshot(prism, content, fpath.name)
+    # ...
+    with lock:
+        all_results[(str(fpath), prism)] = result
+```
+
+**Displacement:** `review()` claims to be a single function with a speed/quality trade-off parameter. **Reality:** It's two completely different algorithms — one independent (parallel) and one context-aware (serial). The parameter doesn't "tune" behavior; it **switches implementations**.
+
+---
+
+### **Displacement 4: `_cmd_expand()` claims to expand, but can also re-discover**
+
+**Location:** `PrismREPL._cmd_expand()` (lines ~1830-1856)
+
+**Claim:** Help text says "cook + run prisms on discovered areas. Uses active file context from last /scan. Requires prior discover." Function name implies it **expands** on already-discovered domains.
+
+**Reality:** If user passes `--refresh` flag, the function **calls `_run_expand()` with `refresh=True`**, which triggers a **re-discovery** (lines 1066-1082 reference this). The function does more than expand — it can **invalidate cached discovery and start over**.
+
+**Evidence:**
+```python
+def _cmd_expand(self, arg):
+    # ...
+    if arg:
+        if "--refresh" in arg:
+            refresh = True
+            arg = arg.replace("--refresh", "").strip()
+    self._run_expand(content, name, indices_str=indices_str,
+                     expand_mode=expand_mode, general=general,
+                     refresh=refresh)  # refresh can trigger full re-discovery
+```
+
+**Displacement:** `_cmd_expand()` claims to be "run prisms on discovered areas" but actually has a hidden mode as **"re-discover then expand."** The name doesn't signal the destructive refresh capability.
+
+---
+
+### **Displacement 5: `Session.save()` and `.load()` claim frozen paths, compute dynamically**
+
+**Location:** `Session` class (lines ~655-680)
+
+**Claim:** Module-level comment says "SESSIONS_DIR = pathlib.Path.home() / '.prism_sessions'  # Compute dynamically, not frozen at module load." Method names imply they save/load to the sessions directory.
+
+**Reality:** Both methods **recompute `SESSIONS_DIR` on every call** (lines 657, 667). This is explicitly correct behavior (comment admits it), but the **displacement is between the class name and the module-level constant**. The constant claims to be a module-level variable but is actually **computed fresh per use** to avoid stale paths if `$HOME` changes.
+
+**Evidence:**
+```python
+def save(self, name):
+    sessions_dir = pathlib.Path.home() / ".prism_sessions"  # Recomputed
+    # ...
+    
+def load(self, name):
+    sessions_dir = pathlib.Path.home() / ".prism_sessions"  # Recomputed
+    # ...
+```
+
+**Displacement:** The global constant `SESSIONS_DIR` claims to be a configuration value but is **actually dead code** — the real paths are computed inline. The "constant" is a **misleading documentation artifact**.
+
+---
+
+### **Displacement 6: `_parse_scan_args()` claims parsing, does semantic rewriting**
+
+**Location:** `PrismREPL._parse_scan_args()` (lines ~1650-1820)
+
+**Claim:** Function name implies it parses arguments into a structured dictionary. Static typing suggests it's a pure function: `args → dict`.
+
+**Reality:** The function performs **semantic rewriting and alias expansion**:
+- `deep=N` → `mode="expand", expand_indices=N, expand_mode="full"`
+- `nuclear` → `mode="discover_expand", discover_type="full", model_override="opus"`
+- `dxf`, `dfxf`, `dxs`, `dfxs` → multi-mode expansions
+
+**Evidence:** Lines 1722-1777 show alias matching and mode transformation.
+
+**Displacement:** `_parse_scan_args()` claims to be a parser but is actually a **compiler** — it translates from a user-friendly command language into internal mode dispatch codes. The name hides the **semantic expansion** happening within.
+
+---
+
+### **Displacement 7: `YieldTracker.get_yield_score()` claims neutral default for unknown domains**
+
+**Location:** `YieldTracker.get_yield_score()` (lines ~753-755)
+
+**Claim:** Docstring says "Unknown domains get 0.5 (neutral) to encourage exploration of new areas." Method name implies it retrieves a score from tracking data.
+
+**Reality:** The method **hardcodes `0.5` as default** for missing keys. This is a **design policy disguised as data retrieval** — the function claims to "get" but actually **invents neutral scores** to drive exploration behavior.
+
+**Evidence:**
+```python
+def get_yield_score(self, domain_name):
+    """Get historical yield score for a domain (0.0-1.0)."""
+    return self.db.get(domain_name, {}).get("yield", 0.5)
+```
+
+**Displacement:** The method claims to retrieve observed data but **fabricates neutral priors** for missing data. The "get" in the name hides the **Bayesian prior logic** (unknown domains are treated as promising until proven otherwise).
+
+---
+
+## Step 3: Name the Cost
+
+### **Displacement 1: `call()` uses JSON internally for text**
+**What it buys:** Cost tracking without breaking existing callers. Adding a separate `call_with_cost()` method would require updating every call site. By hijacking the `output_format="text"` case, cost metadata is captured **transparently**.
+
+**Honest version sacrifice:** Would require either:
+- A new method like `call_with_cost()` (API surface area increase)
+- Adding a `capture_cost=True` parameter (explicit but noisy)
+- Breaking the "text returns text" contract (documentation burden)
+
+**Verdict:** **NECESSARY** — Cost tracking is critical for AI tooling, and this displacement enables it without API breakage.
+
+---
+
+### **Displacement 2: `_cmd_scan()` routes to 9 modes**
+**What it buys:** Single entry point for all analysis workflows. Users type `/scan` and the function figures out what they mean based on context (file vs text vs directory, trailing keywords like "discover" or "optimize"). This is a **unified command language**.
+
+**Honest version sacrifice:** Would require 9 separate commands:
+- `/scan`, `/scan-full`, `/discover`, `/discover-full`, `/expand`, `/optimize`, `/fix`, `/target`, `/behavioral`
+
+**Verdict:** **NECESSARY** — The unified `/scan` command with mode suffixes is better UX than command explosion. The displacement is the cost of **command unification**.
+
+---
+
+### **Displacement 3: `review()` serial mode is a different algorithm**
+**What it buys:** Cross-file pattern detection that parallel mode cannot achieve. By accumulating `prior_findings` and passing them to subsequent analyses, serial mode enables **adaptive, context-aware analysis** that discovers patterns spanning files (e.g., "RaceCondition in 3 files due to shared BaseClass").
+
+**Honest version sacrifice:** Would require two separate functions:
+- `review_parallel()` — fast, independent
+- `review_serial()` — slow, cross-file aware
+
+Or adding an `algorithm=` parameter that makes the trade-off explicit.
+
+**Verdict:** **NECESSARY** — The cross-file pattern capability is valuable, and adding a second function would complicate the API. The displacement is acceptable if the **speed/quality trade-off is documented** (which it is, in the docstring).
+
+---
+
+### **Displacement 4: `_cmd_expand()` can re-discover with `--refresh`**
+**What it buys:** Ability to invalidate stale discovery results without leaving the expand workflow. User can type `/expand --refresh` instead of `/scan discover` then `/expand`. This is **workflow compression**.
+
+**Honest version sacrifice:** Would require a separate `/expand-refresh` command or requiring users to manually re-run discovery.
+
+**Verdict:** **NECESSARY** — The refresh capability is a power-user feature, and the flag is explicitly named. The displacement is minor.
+
+---
+
+### **Displacement 5: `SESSIONS_DIR` constant is unused, paths computed inline**
+**What it buys:** **Correctness if `$HOME` changes during runtime**. If the constant were used, a long-running process might use a stale path. The inline computation ensures sessions are always saved to the current home directory.
+
+**Honest version sacrifice:** Would require either:
+- Using the constant and accepting stale path risk
+- Making the constant a function that computes dynamically (loses "constant" semantics)
+
+**Verdict:** **NECESSARY** — The inline computation is more robust. The constant is **dead code that should be removed**, but the displacement serves reliability.
+
+---
+
+### **Displacement 6: `_parse_scan_args()` performs semantic rewriting**
+**What it buys:** **Powerful command aliases** (`nuclear`, `dxf`, `dfxf`) and backward compatibility (`deep=N` → `expand N full`). Users get a rich command language without learning internal mode names.
+
+**Honest version sacrifice:** Would require:
+- Exposing internal mode names directly (worse UX)
+- Removing aliases (reduced power)
+- A separate "alias expansion" layer (complexity)
+
+**Verdict:** **NECESSARY** — The semantic rewriting is what makes `/scan` feel like a cohesive interface rather than a bag of modes.
+
+---
+
+### **Displacement 7: `YieldTracker.get_yield_score()` returns 0.5 for unknown domains**
+**What it buys:** **Exploration bias**. Unknown domains are treated as promising until proven otherwise, preventing the system from getting stuck in a "only analyze known-good domains" loop. This is an **exploration-exploitation strategy**.
+
+**Honest version sacrifice:** Would require:
+- A separate method like `get_yield_score_or_prior(domain, default=0.5)`
+- Returning `None` for unknown and handling that at call sites (scattered null checks)
+
+**Verdict:** **NECESSARY** — The neutral prior drives adaptive behavior. The function name is slightly misleading but acceptable if documented.
+
+---
+
+## Summary
+
+| Displacement | Claim vs Reality | What it buys | Verdict |
+|--------------|------------------|--------------|---------|
+| `call()` JSON-for-text | "Returns stdout text" → "Returns text, extracts cost from JSON" | Cost tracking without API breakage | **NECESSARY** |
+| `_cmd_scan()` router | "Perform scan" → "Dispatch to 9+ analysis modes" | Unified command entry point | **NECESSARY** |
+| `review()` serial/parallel | "Parameter tunes behavior" → "Two different algorithms" | Cross-file pattern detection capability | **NECESSARY** |
+| `_cmd_expand()` refresh | "Expand on discovered" → "Can re-discover then expand" | Workflow compression for power users | **NECESSARY** |
+| `SESSIONS_DIR` dead code | "Module-level constant" → "Unused, computed inline" | Robustness if `$HOME` changes | **NECESSARY** (but clean up constant) |
+| `_parse_scan_args()` rewriting | "Parse arguments" → "Compile command language" | Rich aliases and backward compat | **NECESSARY** |
+| `YieldTracker.get_yield_score()` prior | "Get observed score" → "Return 0.5 for unknown" | Exploration bias in domain selection | **NECESSARY** |
+
+**Overall Assessment:** All 7 displacements are **NECESSARY**. None are accidental technical debt. Each serves a specific design goal:
+
+1. **Interface compatibility** (Displacement 1)
+2. **UX unification** (Displacements 2, 6)
+3. **Algorithmic capability** (Displacement 3)
+4. **Workflow efficiency** (Displacement 4)
+5. **Runtime robustness** (Displacement 5)
+6. **Adaptive behavior** (Displacement 7)
+
+The displacements are the **cost of impossible goals**:
+- Cost tracking without breaking the text-only contract
+- Single command for 9 different workflows
+- Cross-file patterns in parallel architecture
+- Exploration in a fixed-yield system
+
+**Recommendation:** The code is well-designed, but documentation should be enhanced to acknowledge these displacements explicitly (especially the `call()` cost extraction and `review()`'s algorithm-switching behavior).

@@ -1,0 +1,331 @@
+# Knowledge Boundary Analysis: Starlette Routing Architecture
+
+## Step 1: Claim Classification
+
+### STRUCTURAL Claims (Verifiable from Source)
+
+| Claim | Location | Verification |
+|-------|----------|--------------|
+| `compile_path` enables type-annotated path parameters via `param_convertors` | Lines 51-76 | Direct code inspection |
+| `Mount.routes` property returns live reference to `self._base_app.routes` | Line 129 | Property getter visible |
+| `Router.__call__` performs linear scan: `for route in self.routes:` | Lines 192-195 | Loop structure visible |
+| Route matching is O(n) where n = total routes | Lines 192-220 | Algorithm analysis from loop |
+| No trie/radix tree index exists in the codebase | Throughout | Verifiable absence |
+| `Mount.url_path_for` with `name=None` delegates unqualified | Lines 145-151 | Conditional logic visible |
+| `redirect_slashes=True` triggers two linear scans | Lines 192-195, 213-220 | Two sequential loops visible |
+| `root_path` mutation logic duplicated in Mount.matches and Route.matches | Line 171 vs Route.matches | Code comparison |
+| `re.compile()` can raise `re.error` on malformed patterns | Lines 70-73 | Python language behavior |
+
+### CONTEXTUAL Claims (Depend on External State)
+
+| Claim | Dependency | Gap Type |
+|-------|------------|----------|
+| "The design assumes routes are configured once at startup" | Starlette documentation/design docs | API_DOCS |
+| "asyncio.RWLock" as improvement | Python standard library | API_DOCS |
+| "Middleware wrapping happens per-route, not per-dispatch" | Starlette middleware docs | API_DOCS |
+| "This is sensible for most applications" | Industry usage patterns | MARKET |
+
+### TEMPORAL Claims (May Expire)
+
+| Claim | Staleness Risk | Current Version Dependency |
+|-------|----------------|---------------------------|
+| Line numbers (51-76, 120-195, etc.) | High - monthly | Starlette version analyzed |
+| "Default behavior" of `redirect_slashes=True` | Medium - yearly | Current Starlette defaults |
+| Current `param_convertors` registry | Medium - yearly | Starlette version |
+
+### ASSUMED Claims (Untested Assumptions)
+
+| Claim | Nature | Testability |
+|-------|--------|-------------|
+| Conservation law: `FLEXIBILITY × PERFORMANCE = CONSTANT` | Conceptual model | BENCHMARK |
+| "Deliberately" avoids trie optimization | Intent ascription | COMMUNITY (discussion history) |
+| "Developer ergonomics > runtime efficiency" philosophy | Design interpretation | COMMUNITY |
+| "Most applications" don't need high-performance routing | Usage assumption | MARKET |
+| Cache invalidation is "impossible" with lazy properties | Architectural claim | BENCHMARK (could test alternatives) |
+
+---
+
+## Step 2: Non-STRUCTURAL Claims — Verification Sources
+
+### CLAIM: "asyncio.RWLock" Exists
+**Status: ⚠️ LIKELY INCORRECT**
+
+| Attribute | Value |
+|-----------|-------|
+| **External Source** | Python stdlib docs: https://docs.python.org/3/library/asyncio-sync.html |
+| **Staleness Risk** | Yearly (Python release cycle) |
+| **Confidence** | LOW — Python's asyncio does NOT include RWLock in standard library as of Python 3.12 |
+| **Correction** | Would require third-party `aiorwlock` or custom implementation |
+
+**Impact**: The proposed "improvement" code will not run. This undermines the cache solution architecture.
+
+---
+
+### CLAIM: "The design assumes routes are configured once at startup"
+**Status: ⚠️ NEEDS VERIFICATION**
+
+| Attribute | Value |
+|-----------|-------|
+| **External Source** | Starlette docs: https://www.starlette.io/routing/ |
+| **Staleness Risk** | Yearly |
+| **Confidence** | MEDIUM — Mutable `routes` list suggests dynamic mutation is permitted, not discouraged |
+| **Contradicting Evidence** | The API design (mutable list, lazy property) suggests dynamic routes are supported |
+
+**Impact**: If dynamic routes ARE intended, the cache invalidation problem is a real bug, not a philosophy conflict.
+
+---
+
+### CLAIM: "This is sensible for most applications"
+**Status: ⚠️ UNVERIFIED ASSUMPTION**
+
+| Attribute | Value |
+|-----------|-------|
+| **External Source** | None — this is a normative claim about use cases |
+| **Staleness Risk** | Never (opinion) |
+| **Confidence** | UNKNOWN |
+| **Test Mechanism** | BENCHMARK — would need performance profiling of real Starlette apps |
+
+**Impact**: The entire "conservation law" framework rests on this being true. If most applications DO need high-performance routing, the design is flawed rather than "sensibly prioritized."
+
+---
+
+### CLAIM: Line Number References (51-76, 120-195, etc.)
+**Status: ⚠️ VERSION-DEPENDENT**
+
+| Attribute | Value |
+|-----------|-------|
+| **External Source** | Starlette GitHub: https://github.com/encode/starlette/blob/master/starlette/routing.py |
+| **Staleness Risk** | Monthly (any commit changes line numbers) |
+| **Confidence** | UNKNOWN — no version specified in analysis |
+| **Required Context** | Starlette version number or commit hash |
+
+**Impact**: All specific line citations may be incorrect, making defect locations unverifiable.
+
+---
+
+## Step 3: Gap Map
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           GAP MAP BY FILL MECHANISM                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ API_DOCS (3 gaps)                                                            │
+│ ├── asyncio synchronization primitives available                            │
+│ ├── Starlette design intent for route mutation                              │
+│ └── Middleware application semantics                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ BENCHMARK (3 gaps)                                                           │
+│ ├── O(n) routing actual performance impact on real apps                     │
+│ ├── Whether cache invalidation overhead outweighs linear scan cost          │
+│ └── What route count triggers noticeable degradation                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ COMMUNITY (2 gaps)                                                           │
+│ ├── Historical discussion on trie optimization (GitHub issues)              │
+│ └── Design philosophy documentation (maintainer statements)                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ MARKET (2 gaps)                                                              │
+│ ├── Typical route counts in production Starlette applications               │
+│ └── Whether high-performance routing is a common requirement                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ CHANGELOG (1 gap)                                                            │
+│ └── Which Starlette version was analyzed (line number anchoring)            │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Step 4: Priority Ranking
+
+### 🔴 CRITICAL (Analysis-Changing if Wrong)
+
+**1. asyncio.RWLock Existence**
+- **If wrong**: The proposed cache solution is non-functional
+- **Impact**: Undermines Section II's entire architectural recommendation
+- **Verification**: Immediate — check Python docs
+- **Confidence in Analysis**: LOW
+
+**2. "Design Assumes Static Routes" Claim**
+- **If wrong**: The "conservation law" framing is incorrect; this becomes a bug, not a philosophy
+- **Impact**: Reframes all structural issues as fixable defects
+- **Verification**: Starlette documentation + maintainer statements
+- **Confidence in Analysis**: MEDIUM
+
+### 🟡 HIGH (Substantially Weakens Conclusions)
+
+**3. "Most Applications Don't Need High-Performance Routing"**
+- **If wrong**: Starlette's design is actually a performance defect for typical users
+- **Impact**: Inverts the "sensible trade-off" narrative
+- **Verification**: Market research on production Starlette apps
+- **Confidence in Analysis**: UNKNOWN
+
+**4. Starlette Version (Line Numbers)**
+- **If wrong**: All specific defect locations are unverifiable
+- **Impact**: Cannot validate or reproduce findings
+- **Verification**: Specify version/commit in analysis
+- **Confidence in Analysis**: UNKNOWN (no version stated)
+
+### 🟢 MODERATE (Refines but Doesn't Invert)
+
+**5. Conservation Law Conceptual Framework**
+- **If wrong**: The unified explanation is flawed, but individual defects may still be valid
+- **Impact**: Loss of coherent narrative, not loss of findings
+- **Verification**: This is a conceptual model — not falsifiable per se
+- **Confidence in Analysis**: N/A (model, not fact)
+
+---
+
+## Summary: Critical Knowledge Boundary
+
+The analysis contains a **factual error** (asyncio.RWLock) and **unverifiable design-intent claims** that fundamentally shape its conclusions. The "conservation law" framework depends on:
+
+1. **The proposed cache being viable** — FALSE (RWLock doesn't exist in stdlib)
+2. **Dynamic routes being unintended** — UNVERIFIED (API permits it)
+3. **O(n) being acceptable** — UNTESTED (no benchmarks cited)
+
+**Most impactful gap**: The asyncio.RWLock error. This directly invalidates the cache-based improvement proposal, which means the "exposed tension" between cache consistency and lazy properties may be a **false dilemma** — the cache solution was never viable in standard Python anyway.
+
+**Recommended external sources to consult**:
+1. https://docs.python.org/3/library/asyncio-sync.html — verify available primitives
+2. https://github.com/encode/starlette/issues — search "route cache" or "performance"
+3. https://www.starlette.io/routing/ — verify intended mutation semantics
+4. Starlette version commit hash — anchor line number references
+# Knowledge Audit: Starlette Routing Analysis
+
+## Classification of Claims
+
+### SAFE — Verifiable from Source Structure
+- The existence of `compile_path`, `Mount`, `Router` classes and their structural relationships
+- Linear scan pattern in `for route in self.routes:` (structural observation of iteration)
+- Conservation law as analytical framework (conceptual, not factual)
+- Cache invalidation as a problem category (logical consequence of mutable state)
+- "Developer ergonomics > runtime efficiency" as design philosophy inference
+
+### KNOWLEDGE CLAIMS — Requiring External Verification
+
+---
+
+### **Claim 1: Line Number References**
+> "compile_path function (lines 51-76)", "Mount class (lines 120-195)", "Router.app (lines 192-220)"
+
+**Dependency:** The specific Starlette version analyzed matches the line numbers cited.
+
+**Failure Mode:** Version drift. Starlette 0.27, 0.31, 0.36 all have different line counts. A refactoring that extracts a function shifts all subsequent line numbers.
+
+**Confabulation Risk: HIGH.** Models frequently generate plausible-but-wrong line numbers. The specificity (51-76 vs 50-77) suggests either direct access or confident confabulation.
+
+**With Documentation Access:** Would confirm or refute immediately. Either the lines exist as stated, or they don't.
+
+---
+
+### **Claim 2: Path Composition Behavior**
+> "Mount("/api/{version}", routes=[Route("/users", users_endpoint)])  # becomes /api/v1/users"
+
+**Dependency:** The `{version}` parameter substitutes `v1` when the route is matched with that path parameter value.
+
+**Failure Mode:** This may be correct, but the comment conflates route *definition* with route *matching*. The mount defines the pattern; `v1` would only appear if a request came with `version="v1"`. The example is under-specified.
+
+**Confabulation Risk: MEDIUM.** The behavior is plausible but the example is incomplete—it shows the pattern, not the matching request that produces `/api/v1/users`.
+
+---
+
+### **Claim 3: Quadratic Redirect Behavior**
+> "Quadratic Redirect Behavior... when `redirect_slashes=True` (default), a request requiring redirect triggers two full linear scans. This is O(n) + O(n)... quadratic"
+
+**Dependency:** Two definitions of "quadratic":
+1. Mathematical: O(n²) — FALSE here. O(n) + O(n) = O(2n) = O(n), still linear.
+2. Colloquial: "Twice as bad" — TRUE here.
+
+**Failure Mode:** The claim is mathematically wrong. Two linear scans are still linear. "Quadratic" means the cost grows with the *product* of two variables, not the sum.
+
+**Confabulation Risk: HIGH.** This is a category error—confusing "double scan" with "quadratic complexity." With benchmark data, this would be corrected to "linear with constant factor 2x."
+
+**Additionally:** `redirect_slashes=True` being default requires verification against the actual Router `__init__` signature.
+
+---
+
+### **Claim 4: Absence of Freeze/Lock API**
+> "No freeze/lock API exists after route registration"
+
+**Dependency:** Complete knowledge of Starlette's entire public API.
+
+**Failure Mode:** Starlette could have added `Router.freeze()` in any version. Or it could exist under a different name. Or in a subclass.
+
+**Confabulation Risk: MEDIUM.** Absence claims are hard to verify without exhaustive search. With GitHub issues access: could search for "freeze route" or "lock router" to see if this was requested/added.
+
+---
+
+### **Claim 5: First Match Wins in url_path_for**
+> "When nested mounts use `name=None`, identical route names in different branches collide. The first match wins"
+
+**Dependency:** The actual search order in `Mount.url_path_for` iterates children sequentially and returns on first success.
+
+**Failure Mode:** If the implementation searches breadth-first vs depth-first, or uses a different ordering, the "first match wins" behavior differs. Also, if there's deduplication logic, this claim is wrong.
+
+**Confabulation Risk: MEDIUM.** Plausible given the code structure shown, but runtime behavior should be verified.
+
+---
+
+### **Claim 6: Root Path Duplication**
+> "The scope mutation logic for `root_path` appears in both `Mount.matches` and `Route.matches`. Duplicated code"
+
+**Dependency:** `Route.matches` contains similar `root_path` construction logic.
+
+**Failure Mode:** If `Route.matches` uses a different mechanism (delegating to a helper, or using a different scope key), there's no duplication.
+
+**Confabulation Risk: MEDIUM.** The claim is precise enough to be falsifiable with source access.
+
+---
+
+### **Claim 7: re.compile Error Behavior**
+> "malformed paths can still cause `re.compile()` to raise `re.error` at runtime"
+
+**Dependency:** Python's `re` module behavior—the `re.error` exception type exists and is raised on invalid patterns.
+
+**Confabulation Risk: LOW.** This is Python standard library behavior, stable across versions. Official documentation confirms `re.error` is raised for malformed patterns.
+
+---
+
+## Improvement Construction
+
+### With Official Documentation:
+- **Confirm:** The `redirect_slashes` default value (check Router `__init__` signature)
+- **Confirm:** The `re.error` exception type exists
+- **Refute/Verify:** Line numbers across versions
+
+### With CVE Database:
+- Not directly applicable—this analysis describes design trade-offs, not vulnerabilities. However, if the linear scan is claimed to cause DoS, a CVE search for "Starlette routing DoS" would verify.
+
+### With GitHub Issues:
+- **Search:** "route cache", "freeze routes", "routing performance" — would reveal if the cache idea was discussed/rejected
+- **Search:** "url_path_for namespace" — would reveal if collision bugs were reported
+- **Search:** "quadratic routing" — would reveal if the complexity claim has been raised before
+
+### With Benchmark Data:
+- **Refute:** The "quadratic" claim definitively—benchmarks would show linear scaling with route count, not quadratic
+- **Quantify:** The actual cost of the double scan (2x? 1.5x? negligible?)
+
+### Claims That Remain Unfalsifiable:
+- The conservation law itself (it's a conceptual framework, not a fact)
+- "Developer ergonomics > runtime efficiency" as a design philosophy (requires mind-reading the authors)
+- Whether the trade-offs are "deliberate" vs. incidental
+
+---
+
+## Conservation Law: Structural vs. Knowledge Claims
+
+```
+SPECIFICITY OF CLAIM × VERIFIABILITY FROM SOURCE = CONSTANT
+```
+
+The analysis exhibits an inverse relationship:
+
+| Claim Type | Source-Derived | Externally-Dependent |
+|------------|----------------|----------------------|
+| **Structural** (iteration pattern, class relationships, mutation permits caching problems) | HIGH confidence | — |
+| **Behavioral** (first-match-wins, default values, line numbers) | — | MEDIUM confidence |
+| **Quantitative** (O(n) complexity) | MEDIUM (can reason from code) | — |
+| **Categorical** ("quadratic" vs linear) | — | LOW confidence (error found) |
+
+**The law:** The more specific and falsifiable a claim, the more it depends on external verification. The analysis's strongest insights (the conservation law, the design philosophy inference, the structural tensions) are *unfalsifiable* because they're interpretive. Its weakest claims (line numbers, "quadratic") are precisely the ones that require external verification—and precisely the ones most likely to be wrong.
+
+This is not a flaw in the analysis but a structural property of interpretive work: **confidence trades against falsifiability**. The analysis is most confident where it cannot be proven wrong, and most vulnerable where it can be checked.

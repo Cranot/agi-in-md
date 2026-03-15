@@ -1,0 +1,272 @@
+{
+  "target": "real_code_starlette.py",
+  "lines": 333,
+  "mode": "full",
+  "timestamp": "2026-03-04T13:37:09",
+  "opus_vanilla": {
+    "bugs_found": 6,
+    "bugs_fixed": 6,
+    "cost": 0.28316149999999995,
+    "duration_ms": 201636,
+    "issues": [
+      {
+        "title": "RFC 7231 Allow header violation: only first partial route's methods reported",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P1",
+        "invariant": "HTTP 405 Allow header must list all methods the resource supports (RFC 7231 §6.5.5)"
+      },
+      {
+        "title": "Unbound `response` variable in Route.handle if HTTPException is intercepted",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P1",
+        "invariant": "Variables used after conditional blocks must be defined in all non-raising branches"
+      },
+      {
+        "title": "Unbound `response` variable in Router.not_found if HTTPException is intercepted",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P1",
+        "invariant": "Variables used after conditional blocks must be defined in all non-raising branches"
+      },
+      {
+        "title": "Inner function `app` shadows outer function `app` in request_response",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "Inner functions must not shadow their enclosing function's name"
+      },
+      {
+        "title": "Non-deterministic Allow header due to set iteration",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "HTTP headers with multiple values should have deterministic ordering"
+      },
+      {
+        "title": "BaseRoute.__call__ silently ignores non-http/websocket scopes on no match",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "ASGI apps must respond to all scope types or explicitly reject unsupported ones"
+      }
+    ],
+    "analysis_length": 6785
+  },
+  "prism_weakest": {
+    "bugs_found": 20,
+    "bugs_fixed": 8,
+    "cost": 1.0193797000000002,
+    "duration_ms": 1058899,
+    "issues": [
+      {
+        "title": "Convertor exception produces 500 instead of 404",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Path parameter conversion exceptions must be caught and treated as failed route matches, not server errors."
+      },
+      {
+        "title": "Path parameter name collision in nested routes",
+        "fixed": false,
+        "reason": "syntax error"
+      },
+      {
+        "title": "Mount path remainder parsing off-by-one with trailing slash",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Mount trailing slash stripping hides mount semantics",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Parameter convertors re-executed on route retry",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Parameter convertor results must be cached by (parameter_name, raw_value) to prevent re-execution across router route attempts."
+      },
+      {
+        "title": "Match.PARTIAL doesn't encode failure reason",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Partial match reason is lost in Router",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Redirect_slashes mutates scope path inconsistently",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Path assertion bypassed in optimized mode",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path validation must use explicit checks instead of assertions to prevent bypassing with -O flag"
+      },
+      {
+        "title": "Scope parameter shadowing in closure",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Inner function must not shadow outer function name to avoid closure parameter reference confusion"
+      },
+      {
+        "title": "root_path calculation assumes single Mount",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Silent scope method field mutation between phases",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "HTTP method must not be mutated between matches() and handle() phases to prevent routing inconsistency"
+      },
+      {
+        "title": "Unknown convertor type assertion message unhelpful",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Unknown convertor errors must include parameter name and location context for debugging"
+      },
+      {
+        "title": "Duplicated parameter error lacks instance details",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Error messages for duplicate parameters must include the character position of each duplicate instance, not just parameter names."
+      },
+      {
+        "title": "Allow header iteration order non-canonical",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Mount silently ignores routes when app also provided",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Remaining path calculation lacks bounds checking",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Path slice index must be bounds-checked before slicing to prevent incorrect substring calculations when idx exceeds path length"
+      },
+      {
+        "title": "Deprecation warning doesn't prevent execution",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "NoMatchFound exception loses route search details",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Redirect_slashes only applies to HTTP",
+        "fixed": false,
+        "reason": "not found"
+      }
+    ],
+    "analysis_length": 19210
+  },
+  "prism_strongest": {
+    "bugs_found": 16,
+    "bugs_fixed": 9,
+    "cost": 1.4349691499999997,
+    "duration_ms": 1495265,
+    "issues": [
+      {
+        "title": "Scope mutation before method validation completes",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "redirect_slashes can redirect to wrong route",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "PARTIAL enum is semantically overloaded",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Route.matches() must validate methods via exception (ValidationError) before building child_scope, not return overloaded PARTIAL signal"
+      },
+      {
+        "title": "PARTIAL handling depends on hidden Route.handle() re-validation",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "PARTIAL matches must be explicitly rejected in __call__, not delegated to handle() for re-validation"
+      },
+      {
+        "title": "Mount's implicit 'path' parameter collides silently with user params",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Method validation duplicated in two places",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Convertor type validation uses unhandled assertion",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path convertor validation must use explicit ValueError instead of assertions to provide user-friendly error messages that name the invalid type, the parameter, and list valid options"
+      },
+      {
+        "title": "Mixed error handling patterns in compile_path",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path validation must use ValueError instead of assertions for consistent error handling"
+      },
+      {
+        "title": "'path' parameter tracking inconsistency in Mount",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "param_convertors must not contain 'path' parameter handled implicitly by Mount to prevent matched_params inconsistency"
+      },
+      {
+        "title": "BaseRoute.__call__() doesn't handle Match.PARTIAL",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "PARTIAL-matched routes must return HTTP 405 Method Not Allowed, not 404 Not Found, with explicit handling distinct from NONE."
+      },
+      {
+        "title": "Convertor regex not validated before re.compile()",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Convertor regex patterns must be validated before use to prevent cryptic re.error exceptions."
+      },
+      {
+        "title": "Router doesn't validate scope[\"type\"] before routing",
+        "fixed": false,
+        "reason": "bad json"
+      },
+      {
+        "title": "functools.partial unwrapping stops early",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Inner function shadows outer function name",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Inner function names must not shadow outer function names"
+      },
+      {
+        "title": "Mount.url_path_for() uses O(n) route lookup with no indexing",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Mount doesn't explicitly handle lifespan scope type",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "All scope types must be explicitly handled to prevent silent failures on unhandled scope types."
+      }
+    ],
+    "analysis_length": 76584
+  }
+}

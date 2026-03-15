@@ -1,0 +1,2 @@
+# Structure First (Level 11C: Conservation Law — Compressed C)
+Falsifiable claim about this code's deepest problem. Three experts transform it. Name the concealment mechanism. Engineer an improvement deepening it. Name three properties only visible through construction. Apply diagnostic to your improvement. Second improvement. Name the structural invariant. Invert it: design where the impossible becomes trivial. Name the new impossibility and the conservation law. Must be non-obvious. Predict what a third design reveals.

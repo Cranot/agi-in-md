@@ -1,0 +1,12 @@
+Prism: routing_meta_conservation_law
+Prompt: This routing system's architecture conceals a conservation law that governs its entire design space. Your task is to expose what the code takes for granted.
+
+First: identify the three properties this routing system simultaneously claims to possess: (1) composability via Mount for nested route hierarchies, (2) exact match semantics where each request maps deterministically to one endpoint, and (3) URL reversibility where route names can generate paths. Prove these three properties CANNOT all coexist simultaneously. When routes are composed via Mount, the child route's endpoint name exists in a nested namespace, but the Mount point's scoping logic creates an boundary condition that prevents clean namespace separation. Show which property was actually sacrificed in the implementation.
+
+Name the conservation law in the form A × B = constant, where A and B are the competing properties.
+
+Then: engineer the simplest improvement that would fix the URL generation ambiguity problem—perhaps explicit namespace separation or flattened routing. Trace this improvement through two recursive depths. At depth one, show how fixing endpoint name disambiguation recreates the original matching problem at middleware boundaries. At depth two, show how fixing the middleware boundary recreation recreates a deeper version of the namespace collision problem in route parameter inheritance. Each layer should expose the same impossibility manifesting in a different subsystem.
+
+Apply this entire diagnostic to the conservation law itself. What does YOUR analysis conceal about the relationship between hierarchical scoping and endpoint identity? Name the meta-conservation law that governs trade-offs in understanding this system.
+
+Finally harvest: every concrete defect, gap, or contradiction found at ANY stage of this analysis. For each: location (file/lines), severity (critical/structural/minor), and whether the conservation law predicts it as structural (unfixable without breaking a property) or fixable (implementation bug). For each defect, identify what hidden assumption caused it. For each assumption, name what specific evidence would falsify it. List all predictions this analysis makes about the system's behavior under load—for each prediction: what would confirm it, what would refute it, and your confidence level (0-100%).

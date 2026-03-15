@@ -1,0 +1,94 @@
+```json
+[
+  {
+    "claim": "In async/await, child tasks inherit parent ContextVar state",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "Does asyncio.create_task() copy ContextVar state from parent to child tasks in Python 3.7+?",
+    "risk": "MEDIUM",
+    "impact": "The async leakage critique would be invalid if ContextVar semantics don't support this inheritance pattern",
+    "confidence": 0.7
+  },
+  {
+    "claim": "IterState from one retry operation can leak into nested async calls",
+    "type": "CONTEXTUAL",
+    "fill_source": "BENCHMARK",
+    "query": "Does Tenacity's ContextVar implementation cause state leakage between nested async retry operations in actual test cases?",
+    "risk": "HIGH",
+    "impact": "The primary async defect claim would be unfounded if no actual leakage occurs",
+    "confidence": 0.5
+  },
+  {
+    "claim": "KeyboardInterrupt and SystemExit should escape",
+    "type": "CONTEXTUAL",
+    "fill_source": "API_DOCS",
+    "query": "Does Tenacity's retry_if_exception_type default to Exception (not BaseException), meaning KeyboardInterrupt and SystemExit wouldn't trigger retries?",
+    "risk": "MEDIUM",
+    "impact": "The exception suppression critique would be overstated if these exceptions don't actually trigger retry logic",
+    "confidence": 0.6
+  },
+  {
+    "claim": "Statistics uses ThreadLocal with 100-entry clear threshold",
+    "type": "TEMPORAL",
+    "fill_source": "CHANGELOG",
+    "query": "What is the actual statistics clearing threshold in Tenacity and has it changed over versions?",
+    "risk": "HIGH",
+    "impact": "The diagnostic data loss claim would be inaccurate if the threshold isn't exactly 100 or is configurable",
+    "confidence": 0.3
+  },
+  {
+    "claim": "Three layers of iteration overhead compromises performance",
+    "type": "TEMPORAL",
+    "fill_source": "BENCHMARK",
+    "query": "What is the actual performance impact of Tenacity's iteration overhead in real-world workloads compared to alternative retry libraries?",
+    "risk": "HIGH",
+    "impact": "The performance critique would be overstated if the overhead isn't material in practice",
+    "confidence": 0.2
+  },
+  {
+    "claim": "Flexibility × Predictability = Constant is a fundamental conservation law",
+    "type": "ASSUMED",
+    "fill_source": "MARKET",
+    "query": "Are there examples of retry libraries that achieve both high flexibility and high predictability?",
+    "risk": "HIGH",
+    "impact": "The entire analytical framework would be invalid if counter-examples exist",
+    "confidence": 0.4
+  },
+  {
+    "claim": "You cannot reason about execution without runtime simulation",
+    "type": "ASSUMED",
+    "fill_source": "COMMUNITY",
+    "query": "Do Tenacity users report needing runtime simulation to understand retry behavior?",
+    "risk": "MEDIUM",
+    "impact": "The cognitive load argument would be weakened if users find the library predictable",
+    "confidence": 0.6
+  },
+  {
+    "claim": "These 8 defects remain unaddressed",
+    "type": "CONTEXTUAL",
+    "fill_source": "COMMUNITY",
+    "query": "Do Tenacity maintainers acknowledge any of the 8 reported defects as bugs or design issues?",
+    "risk": "HIGH",
+    "impact": "The critique would be reframed as design choices rather than defects if maintainers don't consider them issues",
+    "confidence": 0.5
+  },
+  {
+    "claim": "Line 298, 354, 195 show the relevant code structure",
+    "type": "TEMPORAL",
+    "fill_source": "CHANGELOG",
+    "query": "Have the line numbers referenced in the analysis changed in recent Tenacity versions?",
+    "risk": "HIGH",
+    "impact": "The code structure critique would be based on outdated line references",
+    "confidence": 0.3
+  },
+  {
+    "claim": "Increases maintenance burden and risk of divergence",
+    "type": "ASSUMED",
+    "fill_source": "COMMUNITY",
+    "query": "Do Tenacity contributors report maintenance difficulties due to dual code paths?",
+    "risk": "MEDIUM",
+    "impact": "The maintenance critique would be anecdotal without contributor feedback",
+    "confidence": 0.5
+  }
+]
+```

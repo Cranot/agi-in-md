@@ -1,0 +1,27 @@
+=== TIER 1: PAPER-CRITICAL TESTS ===
+--- N1: cook3 vs L12 ---
+N1: cook3 = 1404w, score=8
+N1: L12 = 2414w, score=9
+--- N2: K15a re-score with v2 ---
+N2: 50w = 294w, v2_score=9
+N2: 73w = 1302w, v2_score=8
+N2: 332w = 2980w, v2_score=7
+N2: l12g = 926w, v2_score=9
+--- N3: scrambled vs normal ---
+N3: scrambled = 1864w, score=10
+N3: normal L12 = score=9 (from N1)
+--- N4: L12-G pass@5 ---
+N4: run1 = 927w, confab_markers=0
+0
+N4: run2 = 845w, confab_markers=1
+N4: run3 = 1126w, confab_markers=0
+0
+N4: run4 = 1075w, confab_markers=0
+0
+N4: run5 = 956w, confab_markers=0
+0
+--- N6: non-code domains ---
+N6: business = 192w
+N6: academic = 792w
+N6: legal = 893w
+=== TIER 1 COMPLETE ===

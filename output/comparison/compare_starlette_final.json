@@ -1,0 +1,272 @@
+{
+  "target": "real_code_starlette.py (Starlette routing)",
+  "lines": 333,
+  "timestamp": "2026-03-04T11:44:48",
+  "prism": {
+    "bugs_found": 39,
+    "bugs_fixed": 16,
+    "cost": 1.3267,
+    "duration_ms": 1479193,
+    "issues": [
+      {
+        "title": "\"Less redundant \u2014 no double",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Silent rejection",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Method not allowed must return 405 response directly, not raise HTTPException which bypasses proper status handling"
+      },
+      {
+        "title": "Loss of partial",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Middleware",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Scope mutation timing is a contract with middleware.** Original code mutates scope early so middleware can access path_params. The \"redundant\" check in handle() is a second",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "That scope mutation is a message",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "That **Routes are now HTTP",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Route.matches() now returns three values including HTTP status code and must be fully unpacked"
+      },
+      {
+        "title": "That **we've inverted the responsibility model.** Original",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Original design",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Duplicate path parameters must be detected and prevented from silently overwriting previous convertor type definitions"
+      },
+      {
+        "title": "First improvement",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Request instantiation must be deferred into the exception-handling wrapper to preserve failure diagnostics from Request creation"
+      },
+      {
+        "title": "Second improvement",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "route.matches() unpacking must handle all 3 return values consistently across all call sites"
+      },
+      {
+        "title": "Original",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Nested function names must be distinct from enclosing function names to prevent shadowing and enable correct reference resolution."
+      },
+      {
+        "title": "Inverted",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Input validation must use explicit exception raising, not assert statements which can be disabled at runtime"
+      },
+      {
+        "title": "Router",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Route handlers must be visible to exception handlers for policy enforcement"
+      },
+      {
+        "title": "Route",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Middleware",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Middleware",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Event",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Architecture documentation must accurately describe all design patterns including temporal and behavioral couplings"
+      },
+      {
+        "title": "Centralized (Router knows all Routes)",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Router must not require exhaustive knowledge of all possible Route convertor types in advance"
+      },
+      {
+        "title": "Distributed (Routes know themselves)",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Router omniscient",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Route omniscient",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path parameter keys must be validated to exist in param_convertors before dictionary access."
+      },
+      {
+        "title": "Policy omniscient",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "**What Breaks**",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "If Match.NONE on one route, but Match.PARTIAL on another, 405 response is delayed; priority unclear",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Mount doesn't report allowed methods to parent Router; parent can't return 405 correctly",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "scope mutated in matches(); if handle() raises exception, scope left in partial state; middleware sees corrupted path_params",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Redirect logic triggers on Match.PARTIAL; POST to `/api` redirects to `/api/` (GET), client gets 405 on redirect",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Custom convertors can return URL-unsafe strings (e.g., containing \"/\"); URLs become malformed",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "URL parameter values must be URL-encoded to prevent special characters in custom convertor results from malforming URL paths."
+      },
+      {
+        "title": "URL reconstruction doesn't validate parameters against convertor constraints; can generate invalid URLs",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Middleware that wraps self.app sees \"matched route\" even on Match.PARTIAL; can't distinguish matched vs rejected",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "WebSocket scope handling doesn't apply method-like validation; if middleware tries to enforce per-subtype rules, they're silent-failed",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "WebSocket requests must undergo path validation via matches() and return appropriate match status, not silently bypass validation by always returning NONE"
+      },
+      {
+        "title": "Duplicate param detection happens at Route.__init__; if routes are lazy-loaded, error is hard to trace",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Duplicate parameter detection must collect all instances before raising, enabling unified error reporting with complete path context instead of aborting on first occurrence"
+      },
+      {
+        "title": "If request has URL-encoded slashes (%2F), Mount's path extraction might decode them incorrectly; remaining_path breaks Mount composition",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path position calculations must use URL-encoded string lengths from the matched regex groups, not decoded parameter lengths, to avoid off-by-one slicing errors when percent-encoded slashes (%2F) are present"
+      },
+      {
+        "title": "Adding a new semantic constraint (e.g., \"route version must match Accept header\") will require either",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Extending Match enum (tightens Router",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Match must support comparison operators to enable order-based route dispatch logic without modifying Router when enum is extended."
+      },
+      {
+        "title": "Fixing bug #3 (redirect",
+        "fixed": false,
+        "reason": "no code"
+      },
+      {
+        "title": "Fixing bug #1 (Mount methods transparency) will require",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "Middleware re",
+        "fixed": false,
+        "reason": "no code"
+      }
+    ]
+  },
+  "opus": {
+    "bugs_found": 6,
+    "bugs_fixed": 5,
+    "cost": 0.1981,
+    "duration_ms": 144850,
+    "issues": [
+      {
+        "title": "Allow header has non-deterministic ordering",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P1",
+        "invariant": "HTTP headers must have deterministic values; iterating a set produces arbitrary order"
+      },
+      {
+        "title": "Parameter injection in url_path_for via replace_params",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P1",
+        "invariant": "String replacement of template placeholders must not allow one parameter's value to create a placeholder that a subsequent parameter replaces"
+      },
+      {
+        "title": "redirect_slashes rstrip removes ALL trailing slashes instead of one",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "Slash redirect should toggle one trailing slash, not strip all trailing slashes"
+      },
+      {
+        "title": "Inner function 'app' shadows outer function 'app' in request_response",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "Nested functions should not shadow enclosing function names to avoid accidental rebinding"
+      },
+      {
+        "title": "Mount.matches never returns Match.PARTIAL, breaking cross-mount 405 handling",
+        "fixed": false,
+        "reason": "no fix provided"
+      },
+      {
+        "title": "redirect_slashes issues redirect even for PARTIAL (wrong method) matches",
+        "fixed": true,
+        "method": "exact",
+        "severity": "P2",
+        "invariant": "Slash redirects should only occur when the alternative path fully matches the request, not when it would result in a method-not-allowed error"
+      }
+    ]
+  }
+}

@@ -1,0 +1,355 @@
+```json
+[
+  {
+    "claim": "The `compile_path` function (lines 51-76) enables type-annotated path parameters with automatic conversion via `param_convertors`",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_51-76",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Core claim about routing capability would be incorrect, undermining entire analysis."
+  },
+  {
+    "claim": "The `Mount` class (lines 120-195) supports dynamic composition through its `routes` property",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_120-195",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Mount composition model misunderstood, invalidating flexibility claims."
+  },
+  {
+    "claim": "Child routes inherit `root_path` from parent mounts",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_Mount.matches_behavior",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Hierarchical composition claims would need revision."
+  },
+  {
+    "claim": "The code explicitly prioritizes flexibility over performance through a linear scan",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_linear_scan_implementation",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Conservation law interpretation weakened."
+  },
+  {
+    "claim": "`for route in self.routes:` tests each route sequentially via `route.matches(scope)`",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_192-195",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Performance analysis foundation crumbles."
+  },
+  {
+    "claim": "This is O(n) complexity where n is the total number of routes across all mounts",
+    "tier": "DERIVED",
+    "confidence": 0.95,
+    "provenance": "derivation:from_linear_iteration",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Complexity claim wrong; performance analysis needs revision."
+  },
+  {
+    "claim": "The system deliberately avoids building an optimized trie or radix tree index",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:absence_in_codebase",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Claim about design choice would be unfounded."
+  },
+  {
+    "claim": "`Mount.url_path_for` when `name=None` (lines 145-151) performs unqualified delegation to child routes without namespacing",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_145-151",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Namespace collision analysis invalid."
+  },
+  {
+    "claim": "When nested mounts use identical route names—the first match wins",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_iteration_order",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Predictability defect analysis weakened."
+  },
+  {
+    "claim": "This creates ambiguity...sacrificing predictability for composition convenience",
+    "tier": "ASSUMED",
+    "confidence": 0.25,
+    "provenance": "assumption:intent_attribution",
+    "fill_source": "Starlette design docs or maintainer interviews",
+    "falsifiable": false,
+    "impact_if_wrong": "Intent framing wrong but behavioral claims may still hold."
+  },
+  {
+    "claim": "ROUTE COMPOSITION FLEXIBILITY × MATCH PERFORMANCE = CONSTANT",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_observed_tradeoffs",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Central organizing principle of analysis collapses."
+  },
+  {
+    "claim": "This is not an implementation flaw but a mathematical constraint of the design space",
+    "tier": "ASSUMED",
+    "confidence": 0.2,
+    "provenance": "assumption:philosophical_claim",
+    "fill_source": "Routing algorithm theory literature",
+    "falsifiable": false,
+    "impact_if_wrong": "Defect classification changes from structural to fixable."
+  },
+  {
+    "claim": "`Router` allows dynamic route mutation through `self.routes.append()` or assignment",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:Router.routes_list_type",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Cache invalidation analysis wrong."
+  },
+  {
+    "claim": "There's no mechanism to detect these changes",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:absence_of_observers",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Cache consistency problem may not exist."
+  },
+  {
+    "claim": "The design assumes routes are configured once at startup, yet the API permits mutation",
+    "tier": "ASSUMED",
+    "confidence": 0.3,
+    "provenance": "assumption:design_intent",
+    "fill_source": "Starlette documentation or maintainer statements",
+    "falsifiable": false,
+    "impact_if_wrong": "Tension may be intentional feature, not inconsistency."
+  },
+  {
+    "claim": "`Mount.routes` (line 129) accesses `self._base_app.routes` lazily via property getter",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_129",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Staleness analysis incorrect."
+  },
+  {
+    "claim": "When a child router mutates its routes after the parent's cache was built, the parent's cache becomes stale",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_lazy_property_and_mutation",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Cache staleness bug may not exist."
+  },
+  {
+    "claim": "The lazy property pattern hides the dependency, making explicit invalidation impossible",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:from_encapsulation_analysis",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Invalidation strategy claims wrong."
+  },
+  {
+    "claim": "Mount's encapsulation deliberately obscures dependencies, prioritizing developer ergonomics over system observability",
+    "tier": "ASSUMED",
+    "confidence": 0.2,
+    "provenance": "assumption:intent_attribution",
+    "fill_source": "Design rationale documentation",
+    "falsifiable": false,
+    "impact_if_wrong": "Framing wrong; behavior still observable."
+  },
+  {
+    "claim": "`Router.routes` is a mutable list, not frozen",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:Router.__init__",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Mutation analysis foundation wrong."
+  },
+  {
+    "claim": "`Mount.routes` is a property returning a live reference, not a copy",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:Mount.routes_property",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Reference semantics analysis wrong."
+  },
+  {
+    "claim": "No freeze/lock API exists after route registration",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:absence_in_codebase",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Immutability option may exist."
+  },
+  {
+    "claim": "Middleware wrapping happens per-route (lines 98-103), not per-dispatch",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_98-103",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Middleware behavior misunderstood."
+  },
+  {
+    "claim": "DEVELOPER CONVENIENCE × RUNTIME COST = CONSTANT",
+    "tier": "DERIVED",
+    "confidence": 0.75,
+    "provenance": "derivation:from_observed_tradeoffs",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Secondary conservation law weakened."
+  },
+  {
+    "claim": "When nested mounts use `name=None`, identical route names in different branches collide",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_url_path_for_logic",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Defect #1 doesn't exist."
+  },
+  {
+    "claim": "The first match wins, causing incorrect URL generation",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_iteration_behavior",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Severity of namespace issue overstated."
+  },
+  {
+    "claim": "This is structural—it stems from flexibility (unqualified mounts) directly causing unpredictability",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:from_design_analysis",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Defect classification wrong; may be fixable."
+  },
+  {
+    "claim": "Fixable only by sacrificing flexibility (requiring explicit namespacing)",
+    "tier": "DERIVED",
+    "confidence": 0.75,
+    "provenance": "derivation:from_tradeoff_analysis",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Alternative fix may exist."
+  },
+  {
+    "claim": "When `redirect_slashes=True` (default), a request requiring redirect triggers two full linear scans",
+    "tier": "MEASURED",
+    "confidence": 0.7,
+    "provenance": "source:lines_192-220",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Quadratic behavior claim wrong."
+  },
+  {
+    "claim": "The scope mutation logic for `root_path` appears in both `Mount.matches` and `Route.matches`",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:Mount.matches_and_Route.matches",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Code duplication claim wrong."
+  },
+  {
+    "claim": "Duplicated code creates maintenance burden and inconsistency risk",
+    "tier": "ASSUMED",
+    "confidence": 0.3,
+    "provenance": "assumption:software_engineering_best_practice",
+    "fill_source": "Software engineering literature on code duplication",
+    "falsifiable": false,
+    "impact_if_wrong": "Severity of duplication overstated."
+  },
+  {
+    "claim": "The duplicated parameter check (lines 62-67) catches obvious errors, but malformed paths can still cause `re.compile()` to raise `re.error` at runtime",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_62-73",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Error handling analysis wrong."
+  },
+  {
+    "claim": "This should be caught and re-raised with path context for debugging",
+    "tier": "ASSUMED",
+    "confidence": 0.25,
+    "provenance": "assumption:debugging_best_practice",
+    "fill_source": "Python debugging guides or user feedback",
+    "falsifiable": false,
+    "impact_if_wrong": "Recommendation may not align with framework philosophy."
+  },
+  {
+    "claim": "The conservation law is the spine connecting these findings",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:meta_analysis_of_claims",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Analysis coherence overstated."
+  },
+  {
+    "claim": "The system was designed for composability over efficiency",
+    "tier": "ASSUMED",
+    "confidence": 0.25,
+    "provenance": "assumption:design_intent",
+    "fill_source": "Starlette documentation or maintainer interviews",
+    "falsifiable": false,
+    "impact_if_wrong": "Intent framing wrong; behavioral observations may still hold."
+  },
+  {
+    "claim": "Structural issues arise from the conservation law itself (namespace collisions, quadratic scans)",
+    "tier": "DERIVED",
+    "confidence": 0.75,
+    "provenance": "derivation:causal_chain_analysis",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Causal attribution wrong; issues may be independent."
+  },
+  {
+    "claim": "Non-structural issues are incidental code quality concerns (duplication, error handling)",
+    "tier": "DERIVED",
+    "confidence": 0.7,
+    "provenance": "derivation:classification_by_fixability",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Classification scheme flawed."
+  },
+  {
+    "claim": "This diagnostic framework transforms scattered bugs into evidence of an architectural decision",
+    "tier": "DERIVED",
+    "confidence": 0.7,
+    "provenance": "derivation:meta_framework_claim",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Framework utility overstated."
+  },
+  {
+    "claim": "A decision that prioritizes the developer's experience over the machine's",
+    "tier": "ASSUMED",
+    "confidence": 0.2,
+    "provenance": "assumption:value_judgment",
+    "fill_source": "Framework author statements or design docs",
+    "falsifiable": false,
+    "impact_if_wrong": "Normative framing wrong; analysis still descriptively useful."
+  }
+]
+```

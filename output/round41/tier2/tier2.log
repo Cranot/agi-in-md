@@ -1,0 +1,20 @@
+=== TIER 2 TESTS ===
+--- N7: Product vs sum form ---
+N7: starlette: total,specific,abstract,avg_spec_verifiability
+N7: click: I'll classify the claims in this forensic analysis of Click CLI Framework's trade-offs.
+N7: tenacity: I'll analyze this architectural critique of Tenacity by classifying each claim as either SPECIFIC or ABSTRACT, then count the total, specific, and abstract claims, and calculate the average verifiability of specific claims.
+N7 DONE
+--- N8: 3-way law ---
+N8: l12 (1 calls): I'll analyze the provided Starlette routing analysis to classify each claim as SPECIFIC or ABSTRACT and verify the specific ones.
+N8: gaps (3 calls): I'll analyze the knowledge audit claims and classify them as SPECIFIC or ABSTRACT, then count the results and provide verifiability ratings.
+N8: verified (4 calls): I'll analyze this claim about Starlette's routing system to classify each claim as SPECIFIC or ABSTRACT, and then count them.
+N8 DONE
+--- N12: Scale test ---
+Flask app.py: 1625 lines
+N12: Flask L12-G = 991w
+N12 DONE
+--- N13: Composition algebra ---
+N13 L12→audit: 1137w
+N13 audit→L12: 18w
+N13 DONE
+=== TIER 2 COMPLETE ===

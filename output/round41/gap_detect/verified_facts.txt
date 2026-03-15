@@ -1,0 +1,11 @@
+<verified_knowledge>
+The following facts have been verified by external sources. Use them to correct any errors in your analysis:
+
+1. asyncio.RWLock does NOT exist in Python's standard library asyncio module. There is no built-in read-write lock in asyncio. Any improvement suggestion using asyncio.RWLock is invalid. Third-party packages like aiorwlock exist but are not stdlib.
+
+2. O(n) + O(n) = O(2n) = O(n). Two sequential linear scans is still linear time complexity, NOT quadratic. O(n²) would require nested iteration where each of n elements triggers another n operations.
+
+3. Starlette routing.py line numbers may vary across versions. Do not assert specific line numbers as facts unless you can verify them from the source code provided.
+
+4. The conservation law and structural analysis should be based ONLY on patterns observable in the source code. Do not make claims about external API behavior, deprecation status, or community best practices unless they are directly visible in the code.
+</verified_knowledge>

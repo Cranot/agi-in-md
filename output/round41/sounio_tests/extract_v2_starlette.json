@@ -1,0 +1,256 @@
+```json
+[
+  {
+    "claim": "`compile_path` enables type-annotated path parameters via `param_convertors`",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_51-76",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Core architectural description of path parameter handling is incorrect."
+  },
+  {
+    "claim": "`Mount.routes` property returns live reference to `self._base_app.routes`",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:line_129",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Claims about mutable route access and cache invalidation risks are unfounded."
+  },
+  {
+    "claim": "`Router.__call__` performs linear scan: `for route in self.routes:`",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_192-195",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The entire O(n) complexity analysis is wrong."
+  },
+  {
+    "claim": "Route matching is O(n) where n = total routes",
+    "tier": "DERIVED",
+    "confidence": 0.95,
+    "provenance": "derivation:from_loop_structure",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Performance characterization is incorrect; could be better or worse than claimed."
+  },
+  {
+    "claim": "No trie/radix tree index exists in the codebase",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:throughout",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Claims about absence of optimization are wrong; routing may be more efficient than described."
+  },
+  {
+    "claim": "`Mount.url_path_for` with `name=None` delegates unqualified",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_145-151",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Route naming collision analysis is unfounded."
+  },
+  {
+    "claim": "`redirect_slashes=True` triggers two linear scans",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_192-195_213-220",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Performance overhead of redirect behavior is mischaracterized."
+  },
+  {
+    "claim": "`root_path` mutation logic duplicated in Mount.matches and Route.matches",
+    "tier": "STRUCTURAL",
+    "confidence": 0.9,
+    "provenance": "source:line_171_vs_Route.matches",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Code duplication claim is unfounded."
+  },
+  {
+    "claim": "`re.compile()` can raise `re.error` on malformed patterns",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.95,
+    "provenance": "external:python_stdlib_docs",
+    "fill_source": "https://docs.python.org/3/library/re.html",
+    "falsifiable": true,
+    "impact_if_wrong": "Error handling recommendations are based on incorrect Python behavior."
+  },
+  {
+    "claim": "asyncio.RWLock exists in Python standard library",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.2,
+    "provenance": "external:api_docs",
+    "fill_source": "https://docs.python.org/3/library/asyncio-sync.html",
+    "falsifiable": true,
+    "impact_if_wrong": "The proposed cache solution is non-functional; entire architectural recommendation undermined."
+  },
+  {
+    "claim": "The design assumes routes are configured once at startup",
+    "tier": "ASSUMED",
+    "confidence": 0.25,
+    "provenance": "assumption:from_api_design",
+    "fill_source": "Starlette documentation or maintainer statements",
+    "falsifiable": false,
+    "impact_if_wrong": "The conservation law framing is incorrect; this becomes a bug rather than a philosophy."
+  },
+  {
+    "claim": "Middleware wrapping happens per-route, not per-dispatch",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.5,
+    "provenance": "external:starlette_middleware_docs",
+    "fill_source": "https://www.starlette.io/middleware/",
+    "falsifiable": true,
+    "impact_if_wrong": "Performance overhead analysis of middleware is incorrect."
+  },
+  {
+    "claim": "This is sensible for most applications",
+    "tier": "ASSUMED",
+    "confidence": 0.15,
+    "provenance": "assumption:none",
+    "fill_source": "Market research on production Starlette apps",
+    "falsifiable": false,
+    "impact_if_wrong": "The entire conservation law framework rests on a false premise about typical usage."
+  },
+  {
+    "claim": "Line numbers (51-76, 120-195, etc.) are accurate",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.3,
+    "provenance": "external:version_unspecified",
+    "fill_source": "Starlette version number or commit hash",
+    "falsifiable": true,
+    "impact_if_wrong": "All specific defect locations are unverifiable and potentially wrong."
+  },
+  {
+    "claim": "`redirect_slashes=True` is the default",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.5,
+    "provenance": "external:api_docs",
+    "fill_source": "Starlette Router __init__ signature",
+    "falsifiable": true,
+    "impact_if_wrong": "Claims about default behavior causing performance issues are unfounded."
+  },
+  {
+    "claim": "O(n) + O(n) routing behavior is quadratic",
+    "tier": "DERIVED",
+    "confidence": 0.1,
+    "provenance": "derivation:mathematical_error",
+    "fill_source": "Algorithm complexity textbook",
+    "falsifiable": true,
+    "impact_if_wrong": "Mathematical claim is wrong; O(2n) = O(n), still linear, not quadratic."
+  },
+  {
+    "claim": "No freeze/lock API exists after route registration",
+    "tier": "STRUCTURAL",
+    "confidence": 0.85,
+    "provenance": "source:api_exhaustive_search",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Recommendations for immutability patterns are unnecessary."
+  },
+  {
+    "claim": "When nested mounts use `name=None`, first match wins",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:from_sequential_iteration",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Route collision behavior is mischaracterized."
+  },
+  {
+    "claim": "Conservation law: FLEXIBILITY × PERFORMANCE = CONSTANT",
+    "tier": "ASSUMED",
+    "confidence": 0.2,
+    "provenance": "assumption:conceptual_model",
+    "fill_source": "Benchmark data on flexibility-performance trade-offs",
+    "falsifiable": false,
+    "impact_if_wrong": "Unified explanatory framework is flawed but individual defects may remain valid."
+  },
+  {
+    "claim": "Starlette deliberately avoids trie optimization",
+    "tier": "ASSUMED",
+    "confidence": 0.15,
+    "provenance": "assumption:intent_ascription",
+    "fill_source": "GitHub issues search for 'route cache' or 'trie'",
+    "falsifiable": false,
+    "impact_if_wrong": "Design intent characterization is wrong; could be incidental rather than deliberate."
+  },
+  {
+    "claim": "Developer ergonomics > runtime efficiency is Starlette's design philosophy",
+    "tier": "ASSUMED",
+    "confidence": 0.2,
+    "provenance": "assumption:design_interpretation",
+    "fill_source": "Maintainer statements or design docs",
+    "falsifiable": false,
+    "impact_if_wrong": "Interpretive framework for understanding trade-offs is misaligned."
+  },
+  {
+    "claim": "Cache invalidation is impossible with lazy properties",
+    "tier": "DERIVED",
+    "confidence": 0.75,
+    "provenance": "derivation:from_mutable_state_and_lazy_evaluation",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The architectural tension described may not exist."
+  },
+  {
+    "claim": "asyncio.RWLock does NOT exist in Python stdlib as of Python 3.12",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.9,
+    "provenance": "external:python_stdlib_docs",
+    "fill_source": "https://docs.python.org/3/library/asyncio-sync.html",
+    "falsifiable": true,
+    "impact_if_wrong": "The correction itself is wrong; the cache solution might actually be viable."
+  },
+  {
+    "claim": "Two linear scans (O(n) + O(n)) equal O(n), not quadratic",
+    "tier": "DERIVED",
+    "confidence": 0.95,
+    "provenance": "derivation:big_o_mathematics",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "The complexity correction is wrong; original quadratic claim might be right."
+  },
+  {
+    "claim": "SPECIFICITY OF CLAIM × VERIFIABILITY FROM SOURCE = CONSTANT",
+    "tier": "ASSUMED",
+    "confidence": 0.25,
+    "provenance": "assumption:meta_conservation_law",
+    "fill_source": "Cross-analysis validation on other codebases",
+    "falsifiable": false,
+    "impact_if_wrong": "Meta-framework for understanding the analysis is flawed."
+  },
+  {
+    "claim": "Confidence trades against falsifiability",
+    "tier": "ASSUMED",
+    "confidence": 0.3,
+    "provenance": "assumption:epistemological_inference",
+    "fill_source": "Philosophy of science literature",
+    "falsifiable": false,
+    "impact_if_wrong": "The interpretation of the analysis's own structure is flawed."
+  },
+  {
+    "claim": "The analysis is most confident where it cannot be proven wrong",
+    "tier": "ASSUMED",
+    "confidence": 0.35,
+    "provenance": "assumption:self_referential_observation",
+    "fill_source": null,
+    "falsifiable": false,
+    "impact_if_wrong": "The meta-analysis of the analysis's own weaknesses is incorrect."
+  },
+  {
+    "claim": "Mount('/api/{version}', routes=[Route('/users', users_endpoint)]) with version=v1 becomes /api/v1/users",
+    "tier": "DERIVED",
+    "confidence": 0.7,
+    "provenance": "derivation:from_path_composition_rules",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Example demonstrating path composition is misleading or wrong."
+  }
+]
+```

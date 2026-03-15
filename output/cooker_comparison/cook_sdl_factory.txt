@@ -1,0 +1,8 @@
+```json
+{
+  "operation": "Traces how local trust decisions compound through composition into systemic vulnerability.",
+  "blind_spot": "Conservation laws governing security-flexibility tradeoffs and trust cascades across mount boundaries that appear safe in isolation.",
+  "name": "trust_cascade_prism",
+  "prompt": "Execute every step below. Output the complete analysis.\n\n## Step 1: Conservation Law Detection\nIdentify invariant tradeoffs where increasing one property forces decrease in another. Search for patterns: 'flexibility.*security|convenience.*safety|dynamic.*static|configurable.*constrained' and multiplication metaphors like 'x * y = constant' or 'tradeoff between X and Y'.\n\n## Step 2: Trust Boundary Mapping\nTrace where untrusted input crosses into trusted execution without explicit contracts. Search: 'parameter.*convert|cast|trust|assume|expect|scope.*mutate|context.*update' and composition points like 'mount|include|delegate|forward'.\n\n## Step 3: Cascade Failure Pattern Identification\nName and document exactly how local trust decisions propagate. Patterns: 'Mount Composition Cascade' (attack surface multiplies with each nested mount), 'Silent Scope Mutation' (security context changes without caller knowledge), 'Untyped Handoff' (data crosses boundary losing validation guarantees).\n\nFailure patterns must have proper names and describe the propagation mechanism from local to systemic."
+}
+```

@@ -1,0 +1,286 @@
+{
+  "target": "real_code_starlette.py",
+  "lines": 333,
+  "mode": "prism",
+  "timestamp": "2026-03-04T17:54:07",
+  "prism_weakest": {
+    "bugs_found": 16,
+    "bugs_fixed": 11,
+    "cost": 0.70544925,
+    "duration_ms": 719461,
+    "issues": [
+      {
+        "title": "#1: Shadowed inner app function confuses readers; outer function",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Nested function must not shadow outer function name in same enclosing scope"
+      },
+      {
+        "title": "#2: Returns PARTIAL when path matches but method doesn't; semant",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#4: NoMatchFound caught silently in loop; caller can't distingui",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#5: Method validation duplicated (path in matches, method in han",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "All routing criteria (path and method) must be validated in matches() to consolidate validation logic and clarify the contract"
+      },
+      {
+        "title": "#6: Mutates path_params dict in-place; function name suggests pu",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Function must not mutate caller's data structures"
+      },
+      {
+        "title": "#7: Uses assert for convertor validation; disabled with -O flag,",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Validation must not use assert; must use explicit exceptions to survive Python -O flag"
+      },
+      {
+        "title": "#8: Duplicated params error message is grammatically awkward (\"D",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Parameter names in error messages must be properly quoted for clarity and grammatical correctness"
+      },
+      {
+        "title": "#9: Exception message conflates \"name not found\" with \"params in",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Exception message must distinguish between missing route name and invalid parameters error conditions."
+      },
+      {
+        "title": "#10: Treats lifespan scope as unroutable (sends WebSocketClose); ",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Lifespan scope type must be explicitly handled before route matching to prevent it from being treated as an unroutable request."
+      },
+      {
+        "title": "#11: Assert is used instead of explicit raise; Python -O optimiza",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Security-critical input validation must use explicit raise, not assert (which is disabled when Python runs with -O optimization flag)"
+      },
+      {
+        "title": "#12: Potential infinite redirect loop if routes match opposite-sl",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Routes without explicit trailing slashes must match both with and without trailing slashes to prevent infinite redirect loops between opposite-slash patterns"
+      },
+      {
+        "title": "#13: Trailing slash silently stripped with .rstrip(\"/\"); mount pa",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#14: Exponential recursion depth for deeply nested Mounts; no ear",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#15: Infinite recursion possible if circular Mount nesting exists",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#16: Assert for scope type validation; disableable with -O, fails",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Runtime validation of critical ASGI scope contracts must not be disableable by Python -O flag and must provide clear, actionable error messages"
+      },
+      {
+        "title": "#17: Assumes self.methods is iterable for join; never validated i",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Input parameter `methods` must be validated as an iterable collection type before iteration."
+      }
+    ],
+    "analysis_length": 30543
+  },
+  "prism_strongest": {
+    "bugs_found": 30,
+    "bugs_fixed": 21,
+    "cost": 2.3477726999999993,
+    "duration_ms": 2576315,
+    "issues": [
+      {
+        "title": "#1: Missing OPTIONS support. The code enforces method constraint",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "HTTP OPTIONS requests must be allowed on all routes to introspect allowed methods, regardless of method constraints."
+      },
+      {
+        "title": "#2: PARTIAL match doesn't coordinate with redirect. The redirect",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#3: Mounted routes hide method constraints. A Mount compiles pat",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "HTTP routing must return 405 Method Not Allowed with RFC 7231 Allow header when a path matches but the request method is not in the route's allowed methods set, not 404 Not Found."
+      },
+      {
+        "title": "#4: url_path_for doesn't validate method context. You can genera",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#5: HEAD auto-addition is implicit. When methods include \"GET\", ",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#6: Exception doesn't report which constraint failed. When url_p",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#7: Redirect doesn't account for method constraints during PATH ",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#8: scope[\"router\"] doesn't help with parent routes. The router ",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Parent router references must be preserved when scope is updated with nested router data to enable url_path_for() lookups across route hierarchy"
+      },
+      {
+        "title": "#9: Path parameters and endpoint parameter names can conflict si",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path parameter names must not silently conflict with endpoint function parameter names"
+      },
+      {
+        "title": "#10: Host-based routing is compiled but never enforced. The funct",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Host pattern metadata must be preserved in the compiled regex object for route matching enforcement"
+      },
+      {
+        "title": "#11: Duplicate method validation. Route.matches() checks methods ",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#12: Malformed convertor regex isn't validated at registration. I",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Convertor regex must be validated at route registration time, not deferred until path compilation fails"
+      },
+      {
+        "title": "#13: Mount's \"path\" catch-all parameter is popped before children",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#14: PARTIAL match handling is only correct for methods. BaseRout",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "PARTIAL match handling must be explicit in BaseRoute.__call__() to clarify that only FULL and PARTIAL (method mismatches from Route) are delegated to handle()"
+      },
+      {
+        "title": "#15: Redirect slashes feature silently changes semantics. When re",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Expensive behavior requiring body retransmission on 307 redirects must be explicitly opted-in, not silently enabled by default"
+      },
+      {
+        "title": "#1: Missing OPTIONS introspection",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "All explicitly-declared HTTP method sets must include OPTIONS for RFC 7231 introspection compliance"
+      },
+      {
+        "title": "#2: Redirect + method interaction",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Trailing-slash redirects must not be applied to non-idempotent HTTP methods like POST that may have side effects"
+      },
+      {
+        "title": "#3: Mount hides constraints",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path parameter validation must only apply to function endpoints, not app endpoints, to prevent Mount from breaking on non-callable endpoint inspection"
+      },
+      {
+        "title": "#4: url_path_for lacks method context",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Route URL path resolution must accept HTTP method context parameter to resolve ambiguous multi-method routes"
+      },
+      {
+        "title": "#5: HEAD auto-addition implicit",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#6: Exception lacks failure reason",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Exception messages must include the actual parameter values, not just names, to reveal the reason for failure."
+      },
+      {
+        "title": "#7: Redirect logic ambiguous",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path validation and modification must use the same path source to avoid ambiguity between computed route_path and the actual redirect scope path."
+      },
+      {
+        "title": "#8: scope[\"router\"] can't see parent",
+        "fixed": false,
+        "reason": "skipped"
+      },
+      {
+        "title": "#9: Parameter name conflicts undetected",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Parameter name conflicts must be detected before regex patterns with duplicate named groups are constructed"
+      },
+      {
+        "title": "#10: Host-based routing dead code",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Attributes set but never read downstream are dead code and must be removed."
+      },
+      {
+        "title": "#11: Duplicate method checking",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Duplicate methods=None checks must be consolidated to single location after endpoint type is determined"
+      },
+      {
+        "title": "#12: Convertor regex validation missing",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Convertor regex validation must catch all exceptions (missing attribute, wrong type, invalid pattern)"
+      },
+      {
+        "title": "#13: Mount path parameter implicit",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "Path parameters must be explicitly extracted before endpoint type discrimination to ensure all endpoint types (function, Mount, ASGI) have direct access to parameter metadata."
+      },
+      {
+        "title": "#14: PARTIAL assumptions implicit",
+        "fixed": true,
+        "method": "exact",
+        "invariant": "PARTIAL path matches must carry path remainder information in child_scope for nested routing to function correctly."
+      },
+      {
+        "title": "#15: Redirect retransmits large bodies",
+        "fixed": true,
+        "method": "indent-normalized",
+        "invariant": "Redirect responses must use status codes that prevent clients from retransmitting request bodies"
+      }
+    ],
+    "analysis_length": 55433
+  }
+}

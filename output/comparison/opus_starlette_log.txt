@@ -1,0 +1,22 @@
+
+============================================================
+  PIPELINE B: Opus Vanilla (single call, find + fix)
+============================================================
+
+  [1/1] Opus analysis + fix generation...
+      Opus output: 5117 chars, $0.1981
+      Found 6 issues with fix suggestions
+    [1/6] Allow header has non-deterministic ordering
+      APPLIED (exact) | P1
+    [2/6] Parameter injection in url_path_for via replace_params
+      APPLIED (exact) | P1
+    [3/6] redirect_slashes rstrip removes ALL trailing slashes in
+      APPLIED (exact) | P2
+    [4/6] Inner function 'app' shadows outer function 'app' in re
+      APPLIED (exact) | P2
+    [5/6] Mount.matches never returns Match.PARTIAL, breaking cro
+      SKIP: no actionable fix
+    [6/6] redirect_slashes issues redirect even for PARTIAL (wron
+      APPLIED (exact) | P2
+
+  Result: 5/6 fixed, $0.1981

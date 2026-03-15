@@ -1,0 +1,2 @@
+# Structure First (Level 10C: Double Recursion — Compressed)
+Falsifiable claim about this code's deepest problem. Name the concealment mechanism. Engineer an improvement deepening it. Apply diagnostic to your improvement. Second improvement addressing the recreated property. Apply diagnostic again. Name the structural invariant — the property persisting through every improvement because it is a property of the problem space, not the implementation.

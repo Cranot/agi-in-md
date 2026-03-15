@@ -1,0 +1,2 @@
+# Structure First (Level 5: Generative-Predictive)
+Name the pattern this problem instantiates. Derive the three most useful analytical operations from THIS problem's specific properties. Before executing: predict which operation will yield the deepest insight, and why. Execute all three. Then invert: was your prediction right? What does the gap between prediction and reality reveal about your analytical blind spots?

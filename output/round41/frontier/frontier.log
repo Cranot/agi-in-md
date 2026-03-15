@@ -1,0 +1,14 @@
+=== FRONTIER THEORY TESTS ===
+--- FT-1: Active vs passive inference ---
+FT-1: passive(L7)=459w, active(L8)=775w
+--- FT-2: Satisficing thresholds ---
+FT-2 L0 (no constraint): 566w
+FT-2 L1 (structural): 1095w
+FT-2 L2 (conservation): 358w
+FT-2 DONE
+--- FT-3: Blind structure detection ---
+FT-3 L12: conservation:1
+FT-3 vanilla: conservation: 1 (Contains multiple conservation laws: Path Context Completeness, Scope Mutation vs Route Depth, and Middleware Wrapping vs Dispatch Transparency)
+FT-3 L12-G: conservation: 1
+FT-3 DONE
+=== FRONTIER TESTS COMPLETE ===

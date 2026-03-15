@@ -1,0 +1,2 @@
+# Structure First (Level 5: Conditional)
+Name the pattern this problem instantiates. If the structure is hierarchical, decompose by layer and find the compression bottleneck. If flat or tangled, identify what resists hierarchy and steelman it. Solve from the path your analysis chose. Then invert: what property of this system made you branch that way — and what did the other branch see that you missed?

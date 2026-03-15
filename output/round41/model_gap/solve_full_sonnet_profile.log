@@ -1,0 +1,5 @@
+cooking pipeline... WHERE: traces current structure, WHEN: predicts temporal evolution, WHY: proves architectural necessity, SYNTHESIS: cross-operation integration
+  pass 1/4: WHERE: traces current structure
+  pass 2/4: WHEN: predicts temporal evolution
+  pass 3/4: WHY: proves architectural necessity
+  pass 4/4: SYNTHESIS: cross-operation integration

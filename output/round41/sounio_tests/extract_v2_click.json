@@ -1,0 +1,274 @@
+```json
+[
+  {
+    "claim": "`Context.__init__` inherits `default_map` from parent when conditions met",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_36-38",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Inheritance behavior description is incorrect; defect analysis may target non-existent mechanism."
+  },
+  {
+    "claim": "`Parameter.consume_value` returns flat `ParameterSource` without context depth",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:method_structure",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Core premise of provenance ambiguity defect is wrong if depth is actually tracked."
+  },
+  {
+    "claim": "Chaining mode in `Group.invoke` creates shared `parent=ctx` for all commands",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:lines_268-289",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Chaining defect analysis targets wrong mechanism."
+  },
+  {
+    "claim": "`ctx.params` is mutable and callbacks can modify it",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:python_object_model",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Mutation-based provenance severing defect does not exist if params is immutable."
+  },
+  {
+    "claim": "`ParameterSource` enum lacks context depth field",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:enum_definition",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "If depth field exists, the structural impossibility claim is falsified."
+  },
+  {
+    "claim": "`Context.forward` passes `self.params` without sources",
+    "tier": "STRUCTURAL",
+    "confidence": 1.0,
+    "provenance": "source:method_signature",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Defect 7 characterization is incorrect; may be fixable or non-existent."
+  },
+  {
+    "claim": "Child contexts receive inherited values without full causal history",
+    "tier": "DERIVED",
+    "confidence": 0.9,
+    "provenance": "derivation:from_inheritance_mechanism",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Information asymmetry characterization is wrong if causal chain is preserved."
+  },
+  {
+    "claim": "Three properties (Seamless Context Inheritance, Strict Parameter Isolation, Complete Parameter Source Traceability) cannot fully coexist",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:logical_impossibility_proof",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Entire conservation law framework collapses; defects may be simultaneously fixable."
+  },
+  {
+    "claim": "Mutation of `ctx.params` severs provenance chain permanently",
+    "tier": "DERIVED",
+    "confidence": 0.88,
+    "provenance": "derivation:from_mutable_state_semantics",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Defect 4 irreversibility claim is wrong; provenance could be recoverable."
+  },
+  {
+    "claim": "Context sharing inherently creates information asymmetry",
+    "tier": "DERIVED",
+    "confidence": 0.82,
+    "provenance": "derivation:from_shared_mutable_state_theory",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Information-theoretic framing of defects is incorrect."
+  },
+  {
+    "claim": "Scope Isolation × Source Transparency = Constant (conservation law)",
+    "tier": "DERIVED",
+    "confidence": 0.75,
+    "provenance": "derivation:analogous_to_cap_theorem",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Analytical framework is invalid; trade-off may not be fundamental."
+  },
+  {
+    "claim": "Defects 1-4 are predicted by the conservation law",
+    "tier": "DERIVED",
+    "confidence": 0.78,
+    "provenance": "derivation:from_conservation_law_application",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Circular reasoning detected; law was fitted to observations rather than predicting them."
+  },
+  {
+    "claim": "Line numbers 36-38 contain `Context.__init__` inheritance logic",
+    "tier": "MEASURED",
+    "confidence": 0.6,
+    "provenance": "source:lines_36-38",
+    "fill_source": "Click source at specific git tag",
+    "falsifiable": true,
+    "impact_if_wrong": "Specific citations are invalid; code structure claims unverified."
+  },
+  {
+    "claim": "Line numbers 268-289 contain `Group.invoke` chaining logic",
+    "tier": "MEASURED",
+    "confidence": 0.6,
+    "provenance": "source:lines_268-289",
+    "fill_source": "Click source at specific git tag",
+    "falsifiable": true,
+    "impact_if_wrong": "Chaining mode analysis targets wrong code location."
+  },
+  {
+    "claim": "`ParameterSource` enum has values: COMMANDLINE, ENVIRONMENT, DEFAULT, DEFAULT_MAP, PROMPT",
+    "tier": "MEASURED",
+    "confidence": 0.7,
+    "provenance": "source:enum_definition_in_code",
+    "fill_source": "Click 8.x source code verification",
+    "falsifiable": true,
+    "impact_if_wrong": "Enum-based reasoning uses wrong or incomplete value set."
+  },
+  {
+    "claim": "Severity ratings (High/Medium/Low) assigned to defects are accurate",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.45,
+    "provenance": "external:bug_report_frequency",
+    "fill_source": "GitHub Issues (pallets/click), CVE database, production incident reports",
+    "falsifiable": true,
+    "impact_if_wrong": "Practical recommendations misallocate engineering effort."
+  },
+  {
+    "claim": "Defects 5-8 are actually fixable implementation gaps",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.5,
+    "provenance": "external:maintainer_willingness_architecture",
+    "fill_source": "Click maintainer comments in GitHub issues/PRs",
+    "falsifiable": true,
+    "impact_if_wrong": "Recommendations to fix are impractical; may require breaking API changes."
+  },
+  {
+    "claim": "Click version analyzed has these specific behaviors",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.55,
+    "provenance": "external:click_source_version",
+    "fill_source": "Click CHANGELOG.md and git release tags",
+    "falsifiable": true,
+    "impact_if_wrong": "All code behavior claims may be outdated or non-existent in current version."
+  },
+  {
+    "claim": "No existing solution for depth-tracking exists in Click",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.5,
+    "provenance": "external:click_feature_audit",
+    "fill_source": "Click documentation and release notes",
+    "falsifiable": true,
+    "impact_if_wrong": "Proposed gap may already be filled in newer versions."
+  },
+  {
+    "claim": "Click's design assumes static source tracking is sufficient",
+    "tier": "ASSUMED",
+    "confidence": 0.25,
+    "provenance": "assumption:none",
+    "fill_source": "Click design docs: https://click.palletsprojects.com/en/stable/design/",
+    "falsifiable": false,
+    "impact_if_wrong": "Design intent attribution is confabulated; actual rationale unknown."
+  },
+  {
+    "claim": "This is not a bug—it's a theoretical limit",
+    "tier": "ASSUMED",
+    "confidence": 0.28,
+    "provenance": "assumption:none",
+    "fill_source": "Comparison with other CLI frameworks (argparse, typer), academic papers on provenance",
+    "falsifiable": false,
+    "impact_if_wrong": "Classification as fundamental vs. fixable is wrong; advocacy direction reverses."
+  },
+  {
+    "claim": "Click chooses composability, accepting fragmented traceability",
+    "tier": "ASSUMED",
+    "confidence": 0.22,
+    "provenance": "assumption:none",
+    "fill_source": "Click documentation rationale, pallets org design philosophy, maintainer interviews",
+    "falsifiable": false,
+    "impact_if_wrong": "Philosophical framing is incorrect; behavior may be emergent, not intentional."
+  },
+  {
+    "claim": "Click simultaneously pursues: Seamless Context Inheritance, Strict Parameter Isolation, Complete Parameter Source Traceability",
+    "tier": "ASSUMED",
+    "confidence": 0.18,
+    "provenance": "assumption:none",
+    "fill_source": "Click official documentation on design goals",
+    "falsifiable": false,
+    "impact_if_wrong": "Trilemma premise is analyst's conceptualization, not Click's actual design goals."
+  },
+  {
+    "claim": "Derivation Confidence × Empirical Specificity = Constant",
+    "tier": "ASSUMED",
+    "confidence": 0.2,
+    "provenance": "assumption:none",
+    "fill_source": "Epistemology literature on analytical vs empirical claims",
+    "falsifiable": false,
+    "impact_if_wrong": "Meta-framework for judging the analysis is itself unsupported."
+  },
+  {
+    "claim": "The conservation law formulation 'Scope Isolation × Source Transparency = Constant' appears nowhere in peer-reviewed literature",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.4,
+    "provenance": "external:academic_literature_search",
+    "fill_source": "Academic database search (ACM, IEEE, arXiv)",
+    "falsifiable": true,
+    "impact_if_wrong": "Claim of novelty is wrong; law may have prior art with different framing."
+  },
+  {
+    "claim": "The analysis is strongest where it's most abstract and weakest where it's most concrete",
+    "tier": "DERIVED",
+    "confidence": 0.82,
+    "provenance": "derivation:from_audit_findings",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Meta-assessment of analysis quality is incorrect."
+  },
+  {
+    "claim": "Specific line numbers are among the most commonly hallucinated details in model outputs",
+    "tier": "KNOWLEDGE",
+    "confidence": 0.55,
+    "provenance": "external:llm_hallucination_research",
+    "fill_source": "Academic literature on LLM hallucination patterns",
+    "falsifiable": true,
+    "impact_if_wrong": "Skepticism level toward line citations may be miscalibrated."
+  },
+  {
+    "claim": "If no CVEs exist for provenance confusion attacks, severity ratings are speculative",
+    "tier": "DERIVED",
+    "confidence": 0.85,
+    "provenance": "derivation:from_severity_framework_requirements",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "CVE absence may not indicate low severity; threat model differs."
+  },
+  {
+    "claim": "What appears fixable may require deeper restructuring than apparent",
+    "tier": "DERIVED",
+    "confidence": 0.8,
+    "provenance": "derivation:from_software_engineering_experience",
+    "fill_source": null,
+    "falsifiable": true,
+    "impact_if_wrong": "Caution about fixability is unwarranted; fixes may be simpler than expected."
+  },
+  {
+    "claim": "Design intent is invisible and cannot be directly verified",
+    "tier": "ASSUMED",
+    "confidence": 0.3,
+    "provenance": "assumption:none",
+    "fill_source": "Philosophy of design documentation",
+    "falsifiable": false,
+    "impact_if_wrong": "Maintainer statements could directly reveal intent; claim of invisibility is too strong."
+  }
+]
+```

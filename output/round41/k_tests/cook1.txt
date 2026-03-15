@@ -1,0 +1,12 @@
+Prism: routing_conservation_law
+Prompt: This routing system's code exhibits a conservation law that governs its design.
+
+First: identify the three properties this routing system simultaneously claims: (1) composability via Mount for nested route hierarchies, (2) exact match semantics where each request maps deterministically to one endpoint, and (3) URL reversibility where route names can generate paths. Prove these cannot coexist. When routes are composed via Mount, the child route's endpoint name exists in a nested namespace, but the Mount point's scoping logic creates a boundary. Show which property was actually sacrificed.
+
+Name the conservation law: Boundary Precision × Nesting Depth = constant.
+
+Then: engineer the simplest improvement to fix the URL generation ambiguity—perhaps explicit namespace separation or flattened routing. Trace this improvement through two recursive depths. At depth one, show how fixing endpoint disambiguation recreates the original matching problem at middleware boundaries. At depth two, show how fixing the middleware boundary recreates a deeper version of the namespace collision problem in route parameter inheritance. Each layer exposes the same impossibility in a new subsystem.
+
+Apply this entire diagnostic to the conservation law itself. What does "Boundary Precision × Nesting Depth = constant" conceal about the relationship between hierarchical scoping and endpoint identity? Name the meta-conservation law.
+
+Finally harvest: every concrete defect (location: file/lines, severity: critical/structural/minor, whether the conservation law predicts it as structural or fixable). For each defect, identify what assumption caused it. For each assumption, name what evidence would falsify it. List all predictions this analysis makes about the system's behavior under load—what would confirm each, what would refute it, and your confidence level (0-100%).

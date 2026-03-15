@@ -1,0 +1,113 @@
+
+============================================================
+  COMPARISON: Prism (Haiku) vs Opus Vanilla
+  Target: prism.py (2963 lines)
+============================================================
+
+============================================================
+  PIPELINE A: Prism (Haiku + L12 -> editor lens fix)
+============================================================
+
+  [1/2] L12 structural scan...
+      L12 output: 35606 chars, $0.1229
+      Extracted 18 issues
+
+  [2/2] Fixing 18 issues with editor lens...
+    [1/18] 1138–1156
+      SKIP: no matching code found
+    [2/18] 703–711
+      SKIP: no matching code found
+    [3/18] 607–622
+      SKIP: no matching code found
+    [4/18] 561–600
+      SKIP: no matching code found
+    [5/18] 1271–1325
+      SKIP: no matching code found
+    [6/18] 1141–1150
+      SKIP: no matching code found
+    [7/18] 1172–1195
+      SKIP: no matching code found
+    [8/18] 1377–1427
+      SKIP: no matching code found
+    [9/18] 836–877
+      SKIP: no matching code found
+    [10/18] 1138–1156
+      SKIP: no matching code found
+    [11/18] 1347–1370
+      SKIP: no matching code found
+    [12/18] 1441–1448
+      SKIP: no matching code found
+    [13/18] 286–308
+      SKIP: no matching code found
+    [14/18] 1027–1040
+      SKIP: no matching code found
+    [15/18] 385–437
+      SKIP: no matching code found
+    [16/18] 708–724
+      SKIP: no matching code found
+    [17/18] 839–866
+      SKIP: no matching code found
+    [18/18] 1138–1150
+      SKIP: no matching code found
+
+  Result: 0/18 fixed, $0.1229
+
+============================================================
+  PIPELINE B: Opus Vanilla (single call, find + fix)
+============================================================
+
+  [1/1] Opus analysis + fix generation...
+      Opus output: 16439 chars, $0.3793
+      Found 17 issues with fix suggestions
+    [1/17] Signal handler not safe in threaded context
+      SKIP: no actionable fix
+    [2/17] Temp file written to working_dir may be world-readable
+      FAIL: ambiguous (3)
+    [3/17] Path traversal via issue file field in _resolve_file
+      APPLIED (exact) | P0
+    [4/17] Race condition: temp file deleted before subprocess rea
+      SKIP: no actionable fix
+    [5/17] Unbounded file read into memory
+      SKIP: no actionable fix
+    [6/17] TOCTOU race in _heal_fix_one snapshot/restore
+      SKIP: no actionable fix
+    [7/17] Integer overflow on string ID hash
+      APPLIED (exact) | P2
+    [8/17] review() exit code logic is inverted
+      APPLIED (exact) | P1
+    [9/17] ClaudeBackend.send() uses raw bytes but Popen opened wi
+      APPLIED (exact) | P2
+    [10/17] Semaphore in review() not released on thread exception 
+      APPLIED (exact) | P2
+    [11/17] build_cmd falls back to --system-prompt (shell injectio
+      APPLIED (exact) | P1
+    [12/17] Missing thread safety on self.queued_files
+      SKIP: no actionable fix
+    [13/17] Regex pattern in _save_deep_finding can fail on special
+      APPLIED (exact) | P1
+    [14/17] Session.load trusts arbitrary JSON from disk
+      APPLIED (exact) | P2
+    [15/17] _cmd_heal registered as /fix but docstring says /fix
+      SKIP: no actionable fix
+    [16/17] Cost field extraction inconsistency
+      APPLIED (exact) | P2
+    [17/17] _show_inline_diff resets counter mid-stream causing inf
+      APPLIED (exact) | P2
+
+  Result: 10/17 fixed, $0.3793
+
+============================================================
+  FINAL COMPARISON
+============================================================
+
+                                   Prism (Haiku)    Opus Vanilla
+  ──────────────────────────────────────────────────────────────
+  Bugs found                                  18              17
+  Bugs fixed (applied+compiles)                0              10
+  Fix rate                                    0%             59%
+  Cost                           $       0.1229 $       0.3793
+  Time                                   252.4s          83.0s
+
+  Results saved: ./output\comparison\compare_prism.json
+
+  Done!

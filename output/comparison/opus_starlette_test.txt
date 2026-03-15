@@ -1,0 +1,51 @@
+Found: 6, Fixed: 5, Cost: 0.19806150000000003
+Duration: 144850ms
+{
+  "bugs_found": 6,
+  "bugs_fixed": 5,
+  "cost": 0.19806150000000003,
+  "duration_ms": 144850,
+  "issues": [
+    {
+      "title": "Allow header has non-deterministic ordering",
+      "fixed": true,
+      "method": "exact",
+      "severity": "P1",
+      "invariant": "HTTP headers must have deterministic values; iterating a set produces arbitrary order"
+    },
+    {
+      "title": "Parameter injection in url_path_for via replace_params",
+      "fixed": true,
+      "method": "exact",
+      "severity": "P1",
+      "invariant": "String replacement of template placeholders must not allow one parameter's value to create a placeholder that a subsequent parameter replaces"
+    },
+    {
+      "title": "redirect_slashes rstrip removes ALL trailing slashes instead of one",
+      "fixed": true,
+      "method": "exact",
+      "severity": "P2",
+      "invariant": "Slash redirect should toggle one trailing slash, not strip all trailing slashes"
+    },
+    {
+      "title": "Inner function 'app' shadows outer function 'app' in request_response",
+      "fixed": true,
+      "method": "exact",
+      "severity": "P2",
+      "invariant": "Nested functions should not shadow enclosing function names to avoid accidental rebinding"
+    },
+    {
+      "title": "Mount.matches never returns Match.PARTIAL, breaking cross-mount 405 handling",
+      "fixed": false,
+      "reason": "no fix provided"
+    },
+    {
+      "title": "redirect_slashes issues redirect even for PARTIAL (wrong method) matches",
+      "fixed": true,
+      "method": "exact",
+      "severity": "P2",
+      "invariant": "Slash redirects should only occur when the alternative path fully matches the request, not when it would result in a method-not-allowed error"
+    }
+  ],
+  "analysis": "{\"title\":\"Allow header has non-deterministic ordering\",\"description\":\"self.methods is a set, so ', '.join(self.methods) produces non-deterministic output. The Allow header value changes between requests, violating RFC 7231 expectations for consistent headers and breaking caching/testing.\",\"severity\":\"P1\",\"old_string\":\"headers = {\\\"Allow\\\": \\\", \\\".join(self.methods)}\",\"new_string\":\"headers = {\\\"Allow\\\": \\\", \\\".join(sorted(self.methods))}\",\"invariant\":\"HTTP headers must have deterministic values; iterating a set produces arbitrary order\"}\n{\"title\":\"Parameter injection in url_path_for via replace_params\",\"description\":\"replace_params uses str.replace in a loop. If a param value contains a literal '{other_param}' substring matching another param's placeholder, the second iteration replaces BOTH the original and the injected placeholder. E.g. url_path_for('r', user_id='{post_id}', post_id='123') with path '/users/{user_id}/posts/{post_id}' produces '/users/123/posts/123' instead of '/users/{post_id}/posts/123'. Generates incorrect URLs.\",\"severity\":\"P1\",\"old_string\":\"def replace_params(path, param_convertors, path_params):\\n    for key, value in list(path_params.items()):\\n        if \\\"{\\\" + key + \\\"}\\\" in path:\\n            convertor = param_convertors[key]\\n            value = convertor.to_string(value)\\n            path = path.replace(\\\"{\\\" + key + \\\"}\\\", value)\\n            path_params.pop(key)\\n    return path, path_params\",\"new_string\":\"def replace_params(path, param_convertors, path_params):\\n    for key, value in list(path_params.items()):\\n        placeholder = \\\"{\\\" + key + \\\"}\\\"\\n        if placeholder in path:\\n            convertor = param_convertors[key]\\n            value = convertor.to_string(value)\\n            path = path.replace(placeholder, value, 1)\\n            path_params.pop(key)\\n    return path, path_params\",\"invariant\":\"String replacement of template placeholders must not allow one parameter's value to create a placeholder that a subsequent parameter replaces\"}\n{\"title\":\"redirect_slashes rstrip removes ALL trailing slashes instead of one\",\"description\":\"redirect_scope['path'].rstrip('/') strips every trailing slash. A path like '/foo/bar//' becomes '/foo/bar' instead of '/foo/bar/', potentially redirecting to a completely different route. Only one slash should be stripped.\",\"severity\":\"P2\",\"old_string\":\"redirect_scope[\\\"path\\\"] = redirect_scope[\\\"path\\\"].rstrip(\\\"/\\\")\",\"new_string\":\"redirect_scope[\\\"path\\\"] = redirect_scope[\\\"path\\\"][:-1]\",\"invariant\":\"Slash redirect should toggle one trailing slash, not strip all trailing slashes\"}\n{\"title\":\"Inner function 'app' shadows outer function 'app' in request_response\",\"description\":\"In request_response, both the outer ASGI callable and the inner exception-handling wrapper are named 'app'. If the inner function were ever moved or the outer referenced after inner definition, this shadowing would cause a subtle bug. The names should be distinct.\",\"severity\":\"P2\",\"old_string\":\"    async def app(scope, receive, send):\\n        request = Request(scope, receive, send)\\n\\n        async def app(scope, receive, send):\\n            response = await f(request)\\n            await response(scope, receive, send)\\n\\n        await wrap_app_handling_exceptions(app, request)(scope, receive, send)\",\"new_string\":\"    async def app(scope, receive, send):\\n        request = Request(scope, receive, send)\\n\\n        async def handler(scope, receive, send):\\n            response = await f(request)\\n            await response(scope, receive, send)\\n\\n        await wrap_app_handling_exceptions(handler, request)(scope, receive, send)\",\"invariant\":\"Nested functions should not shadow enclosing function names to avoid accidental rebinding\"}\n{\"title\":\"Mount.matches never returns Match.PARTIAL, breaking cross-mount 405 handling\",\"description\":\"Mount.matches returns Match.FULL whenever the path prefix matches, even if inner routes only partially match (e.g. wrong HTTP method). The parent Router sees FULL and delegates immediately, never trying sibling routes that might handle the method. A POST to /api/users where Mount('/api') has only GET routes returns 405 from the mount instead of falling through to a sibling Route('/api/users', methods=['POST']).\",\"severity\":\"P1\",\"old_string\":\"\",\"new_string\":\"\",\"invariant\":\"PARTIAL match should propagate through mount boundaries so the parent router can try alternative routes before returning 405\"}\n{\"title\":\"redirect_slashes issues redirect even for PARTIAL (wrong method) matches\",\"description\":\"In Router.app, the redirect check uses 'match != Match.NONE', which includes PARTIAL matches. A POST to '/foo' that has a GET-only route at '/foo/' triggers a 307 redirect, only for the client to receive a 405 at the redirected URL. The redirect should only trigger for FULL matches.\",\"severity\":\"P2\",\"old_string\":\"                if match != Match.NONE:\",\"new_string\":\"                if match == Match.FULL:\",\"invariant\":\"Slash redirects should only occur when the alternative path fully matches the request, not when it would result in a method-not-allowed error\"}"
+}

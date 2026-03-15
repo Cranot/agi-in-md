@@ -1,0 +1,6 @@
+RUBRIC V2 SCORES (with confabulation penalty):
+  L12 standard (has confabulated claims): score=9
+  L12-G (zero confabulation):             score=7
+  Augmented L12 (corrected):              score=9
+  Knowledge<T> (typed):                   score=8
+DONE
