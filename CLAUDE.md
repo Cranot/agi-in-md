@@ -27,7 +27,7 @@ System prompts are cognitive prisms. They change how models frame problems, not 
 | **2** | 2 ops | 5-6w | Two operations with ordering | — |
 | **1** | 1 op | 3-4w | One behavioral change | — |
 
-**Levels are categorical, not continuous.** Below each threshold, that type of intelligence CANNOT be encoded — not "less effective," categorically absent.
+**Levels are categorical, not continuous.** Below each threshold, that type of reasoning was never observed in 1,000+ experiments — not "less effective," consistently absent. (AI-evaluated depth scores; the categorical claim is the strongest interpretation of the data, not a proven impossibility.)
 
 ## Key Results
 
@@ -228,7 +228,7 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 | `deep.sh` | CLI prism analysis tool (standalone) |
 | `test_plan_pipeline.py` | Tests for prism.py (33 tests) |
 | **Prisms** | |
-| `prisms/` | 33 production prisms + 9 variants/internal (42 total). See README for full catalog. |
+| `prisms/` | 48 prism files on disk — see README and PRISMS.md for full catalog. |
 | `prisms/l12.md` | L12 meta-conservation pipeline — default for `/scan` on code (332w) |
 | `prisms/l12_universal.md` | L12 compressed to 73w — Sonnet-only universal (code + reasoning), always single-shot |
 | `prisms/deep_scan.md` | SDL-1: Structural Deep-Scan Lens — conservation law + info laundering + 3 bug patterns (180w) |
@@ -343,7 +343,7 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 - **Taxonomy is a tree above L8 (P183)**: Simulation branch produces different L9 meta-law (Predictive Certainty × Temporal Distance) than construction's L9. Diamond topology holds.
 - **Sonnet lifts all operations +0.7 avg depth** (P180). Simulation/Miniaturize/Transplant benefit most (hypothetical reasoning).
 - **DIAMOND CONVERGENCE CONFIRMED (P184-P188)**: Two full L9→L12 chains (simulation + archaeology) BOTH converge at L12 on the same structural impossibility as construction: "the method instantiates what it diagnoses." Three vocabularies (observer-constitutive / observer effect / performative contradiction), one fixed point. Conservation laws diverge at every level EXCEPT L12. Terminal behavior converges to fixed point regardless of starting operation. The taxonomy is operation-independent at the reflexive ceiling.
-- **33 production prisms** (+ 3 pipeline-internal + 6 variants = 42 total on disk), all scored, all with optimal model routing.
+- **48 prism files on disk** (production + pipeline-internal + variants), all scored, all with optimal model routing.
 - **3-cooker pipeline (P195-P197)**: COOK_ARCHAEOLOGY(WHERE) + COOK_SIMULATION(WHEN) + COOK_UNIVERSAL(WHY) → synthesis. 4 calls, 9.5 depth. Cross-operation synthesis is inherently adversarial (no dedicated adversarial pass needed). Works on ANY domain — cookers customize to intent. Solves "non-code Full Prism" question.
 - **COOK_3WAY template** (`research/cook_3way.md`): Single cook step that generates all 4 prompts (3 operations + synthesis) for the 3-cooker pipeline. Combines COOK_ARCH + COOK_SIM + COOK_L12 + synthesis prompt into one.
 - **Operation-specific cookers** (`research/cook_simulation.md`, `research/cook_archaeology.md`): Preserve operation type through explicit negative instructions ("No trilemmas, no impossibility proofs"). Validated on security intent.

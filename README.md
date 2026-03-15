@@ -55,6 +55,7 @@ Depth = how deep the analysis goes, scored 1-10. Naming a pattern is ~7. Derivin
 | **Experiments** | **1,000+** raw outputs across 41 research rounds |
 | **Domains tested** | **20+** — code, math, philosophy, legal, medical, music, fiction, business, more |
 | **Hit rate** | **97%+** on construction-based analysis, **14/14** on full pipeline |
+| **Factual accuracy** | **97%** on planted-bug code, **~42%** on real production code — structural insights reliable, specific bug claims are hypotheses ([details](#accuracy)) |
 | **Confabulation** | L12-G: **90% zero-confabulation** (9/10 runs, N=10) |
 | **Cross-language** | Python, Go, TypeScript validated |
 
@@ -234,7 +235,7 @@ Use `-m haiku` for ~5x cheaper — same depth, occasionally needs a retry.
 
 ### Champion Prisms
 
-The best prism per use-case. All auto-selected by `prism.py` — you just pick the mode. Full catalog of all 33 production prisms: **[PRISMS.md](PRISMS.md)**
+The best prism per use-case. All auto-selected by `prism.py` — you just pick the mode. Full catalog: **[PRISMS.md](PRISMS.md)**
 
 | Prism | What It Finds | Score | Best For |
 |-------|--------------|-------|----------|
@@ -338,7 +339,7 @@ Every cooker runs on Sonnet regardless of your `-m` flag — the cooker's model 
 
 ## The Compression Taxonomy
 
-How much analytical depth can you encode in how few words? We tested 13 levels. Each is categorical — below the threshold, that type of thinking is **absent**, not just weaker.
+How much analytical depth can you encode in how few words? We tested 13 levels across 1,000+ experiments. Each appears categorical — below the threshold, that type of thinking was never observed, not just weaker. (These thresholds are based on AI-evaluated depth scores. The categorical boundary claim is our strongest interpretation of the data — not a proven impossibility, but a consistent empirical pattern across all tested models and domains.)
 
 | Level | Prompt Size | What the Model Does | Hit Rate |
 |-------|-------------|--------------------| ---------|
@@ -406,7 +407,11 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 **Math problems:** Full prism (multi-step pipeline) did NOT help on AIME — single prism worked better. Too many pipeline steps dilute focus on competition problems.
 
-**Confabulation in standard L12:** L12 will occasionally invent API names or misstate complexity classes. This is structural, not a bug — models confabulate specific claims while structural insights are reliable. Use `--trust` or `l12g` mode for zero-confabulation output. The tool warns when it detects suspicious API references.
+<a id="accuracy"></a>
+
+**Factual accuracy is target-dependent.** We verified L12 claims against source code with a second model (Sonnet-as-judge). On a synthetic CLI with 10 planted gaps: 29/30 claims TRUE (97%). On real production code (Click core.py, 417 lines): ~42% accuracy — 1 TRUE, 5 FALSE, 4 PARTIAL, 1 unverifiable. All line numbers were fabricated (0/10 correct). The pattern: conservation laws and structural analysis are reliably true. Specific bug claims on complex production code — where intentional design choices look like bugs to an outsider — should be treated as hypotheses, not confirmed findings. This is why `--trust` and `l12g` modes exist.
+
+**Confabulation in standard L12:** L12 will occasionally invent API names or misstate complexity classes. L12-G and Oracle fix this — they classify claims by type and retract anything they can't verify from source. N=10 test: 9/10 runs = zero confabulation. Use `--trust` for maximum epistemic integrity.
 
 **Pipeline ordering matters:** Running audit before L12 produces near-empty output (18 words vs 1,137 words in correct order). The tool warns if you compose prisms in the wrong order.
 
@@ -426,7 +431,7 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 **How do I know what to trust?** Use `--trust` (Oracle mode). Every claim is tagged `[STRUCTURAL]`, `[DERIVED]`, `[KNOWLEDGE]`, or `[ASSUMED]`. Structural claims are source-derived. Knowledge claims need external verification. Assumed claims are flagged as unverified.
 
-**What's the catch?** Single-researcher project. All depth scores are AI-evaluated, not human-scored or peer-reviewed. Sample sizes are small (3-30 per finding). The scrambled vocabulary result (10/10) means the rubric measures format compliance — which is itself interesting but different from factual correctness. Raw outputs are in `output/` for independent verification.
+**What's the catch?** Single-researcher project. All depth scores are AI-evaluated, not human-scored or peer-reviewed. Sample sizes are small (3-30 per finding). The scrambled vocabulary result (10/10) means the rubric measures format compliance — which is itself interesting but different from factual correctness. Factual accuracy varies by target: 97% on simple code with planted bugs, ~42% on complex production code where intentional design looks like defects (structural insights stay reliable — specific bug claims don't). Raw outputs are in `output/` for independent verification.
 
 ---
 
@@ -455,12 +460,22 @@ experiment_log.md     Research log (Rounds 1-41)
 
 ## What's Next
 
-- Human evaluation of output quality (currently AI-evaluated only)
-- Formal derivation of the specificity-verifiability trade-off
+**Validation:**
+- **Human evaluation of output quality** — blind scoring of prism vs vanilla outputs by developers who didn't write the tool. Planned protocol: 3-5 human raters, 5 flagship prisms, 3 real codebases, randomized presentation, rubric distinguishing structural insight from factual accuracy. This is the biggest credibility gap.
+
+**Architecture (highest leverage, designs ready):**
+- **Subsystem routing** — map a file into classes/functions/state boundaries, rank hotspots, run different prisms on different regions, synthesize. Currently the single biggest quality upgrade available.
+- **Evidence ledger** — every finding becomes a structured object with claim type, source span, confidence, provenance, and falsification criteria. Enables "which findings depend on this ASSUMED claim?"
+- **Repository graph awareness** — import graph, call graph, cross-file synthesis. "This function is where the bug appears, but these three other files encode the conservation law causing it."
+- **Learning memory** — per-repo store of false positives, accepted fixes, rejected recommendations, style constraints. The agent stops repeating the same class of mistake.
+
+**Features:**
+- **Disagreement committee** — lightweight 2-prism mode that surfaces where orthogonal prisms disagree. Much of Full's self-correction at a fraction of the cost.
+- **Patch restraint** — propose minimal fix, predict second-order breakage, list preserved invariants, optionally generate tests. Safe change under structural constraints.
 - AgentsKB integration for automatic gap filling
 - GPT-4o, Llama testing (Gemini 2.5 Flash + Hermes 3 confirmed working)
 
-Want to help? Test on other models, run `--trust` on your code and report what it finds, open PRs with results.
+Want to help? Test on other models, run `--trust` on your code and report what it finds, open PRs with results. **Especially welcome: independent human evaluation of outputs in `output/`.**
 
 ---
 

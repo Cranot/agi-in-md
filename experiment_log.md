@@ -5374,4 +5374,4 @@ COOK_3WAY template created (`research/cook_3way.md`): single cook step generates
 
 ---
 
-**Status:** 1,000+ total experiments across 40 rounds. 204+ proven principles (P1-P204). 33 production prisms. 13 compression levels (L13 = reflexive ceiling). Diamond topology confirmed. Large-file scaling validated to 2700 lines. Domain boundary mapped: structured input required for code-vocabulary prisms.
+**Status:** 1,000+ total experiments across 40 rounds. 204+ proven principles (P1-P204). 48 prism files (production + pipeline-internal + variants). 13 compression levels (L13 = reflexive ceiling). Diamond topology confirmed. Large-file scaling validated to 2700 lines. Domain boundary mapped: structured input required for code-vocabulary prisms.

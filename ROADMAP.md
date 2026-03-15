@@ -77,15 +77,32 @@ All skills produce correct structure (generated lens, findings, constraint foote
 ### B1. Sonnet lens factory (`--factory`)
 - Design: `research/factory_design.md` (complete). Effort: 4-6 hours.
 
-### B2. Sub-artifact targeting (`/scan file subsystem`)
+### B2. Sub-artifact targeting (`/scan file subsystem`) — HIGHEST LEVERAGE
 - Design: `research/subsystem_design.md` (complete). Effort: 6-8 hours.
+- **Vision**: Map file into classes/functions/state boundaries → rank hotspots by complexity/coupling → run different prisms on different regions → synthesize cross-subsystem findings. Currently the single biggest quality upgrade available — running identity on a class that lies about its role + optimize on the hot path + error_resilience on the error handlers beats running L12 on the whole file.
+- **Phase 1**: AST split (Python) / regex heuristic (other langs). Min 10 lines per subsystem, max 8 subsystems.
+- **Phase 2**: Hotspot ranking — assign prisms based on subsystem characteristics (state mutation → error_resilience, API surface → api_surface, performance-critical → optimize).
+- **Phase 3**: Parallel execution with per-subsystem optimal prism/model.
+- **Phase 4**: Cross-subsystem synthesis — "this function is where the bug appears, but these three other subsystems encode the conservation law causing it."
+- **Cost model**: N+2 API calls (calibration + N subsystems + synthesis), ~$0.15-0.55.
 
 ### B3. Regression benchmark suite (`research/benchmark.py`)
 - Design: `research/benchmark_design.md` (complete). Effort: 8-12 hours.
 - **Extended by F2**: model comparison mode (`--compare-models`). Combined B3+F2 effort: 10-14 hours.
 
-### B4. Auto-constraint report in prism.py
-- Zero API calls — template appended to output. Effort: 30 min.
+### B4. Learning memory — constraint history + feedback loop
+- **Phase 1 (30 min)**: Auto-constraint report appended to output. Zero API calls — template footer listing what was found, what was sacrificed, what dimensions remain unexplored.
+- **Phase 2 (1-2 hours)**: Persist to `.deep/constraint_history.md`. Next `/scan` reads it, injects as preamble. Proven in Hermes: scan1 1047w → reflect → scan2 1257w with DIFFERENT lens targeting unexplored dimensions.
+- **Phase 3 (2-3 hours)**: Full learning memory. Store per-repo: false positives ("this is intentional design, not a bug"), accepted fixes, rejected recommendations, known style constraints. Agent stops repeating the same class of mistake. Schema:
+  ```json
+  {
+    "false_positives": [{"claim": "...", "reason": "intentional design", "file": "...", "date": "..."}],
+    "accepted_fixes": [{"issue": "...", "fix": "...", "file": "...", "date": "..."}],
+    "rejected_advice": [{"recommendation": "...", "reason": "...", "date": "..."}],
+    "style_constraints": ["no global state", "prefer composition over inheritance"]
+  }
+  ```
+- **Phase 4 (1 hour)**: Feed learning memory into cooker. When cooking a prism for a codebase with history, the cooker sees "these 5 recommendations were rejected because of X" and avoids that class of finding.
 
 ### B5. `/scan file reflect` mode in prism.py
 - L12 → claim → constraint summary. Effort: 1-2 hours.
@@ -105,6 +122,62 @@ All skills produce correct structure (generated lens, findings, constraint foote
 - **Scoring rubric in docs** — add to CLAUDE.md or README (from AI researcher judge).
 - **Custom focus direction** — "focusing on X" in prism-scan is powerful. Port to prism.py target= flow.
 - **P205: Skills work cross-model at 70B+ with correct structure but shorter output.** Sonnet produces 2-3x more words than Hermes 3/Llama 70B on same skill. Quality difference is depth, not structure.
+
+### B8. Evidence ledger — structured provenance for every claim
+- **What**: Every finding becomes a first-class object, not just markdown text. Schema:
+  ```json
+  {
+    "claim": "Session state is non-monotonic",
+    "claim_type": "STRUCTURAL",
+    "source_span": "session.py:45-67",
+    "confidence": 0.9,
+    "external_dependency": null,
+    "falsifiable_by": "Show a monotonic session implementation that preserves isolation",
+    "correction_history": [],
+    "prism_source": "l12",
+    "model": "sonnet"
+  }
+  ```
+- **Why**: Oracle already tags claims by type. knowledge_boundary classifies gaps. knowledge_typed adds provenance. But these are all independent markdown outputs — no unified data structure flows through the pipeline. When L12 makes claim X and adversarial attacks it, there's no provenance chain linking them.
+- **Implementation**: Add `--json-findings` flag. Each pipeline step emits structured findings. Synthesis receives typed objects, not raw text. Enables: "which findings depend on this ASSUMED claim?" and "show me everything that changed between scan 1 and scan 2."
+- **Effort**: 4-6 hours. **Priority**: HIGH — prerequisite for reliable gap-fill (J7) and learning memory (B4 Phase 3).
+
+### B9. Patch mode with restraint (`/scan file fix safe`)
+- **What**: Current `/fix auto` extracts bugs and applies patches. Enhanced version: propose the smallest patch → predict second-order breakage → list preserved invariants → optionally generate tests. "Safe change under structural constraints" as a first-class mode.
+- **Why**: The repo's core strength is finding structural trade-offs. Applying fixes without acknowledging those trade-offs undermines the insight. A fix that breaks a conservation law is worse than no fix.
+- **Implementation**:
+  1. Extract issues (existing `_extract_issues()`)
+  2. For each fixable issue: generate minimal patch + impact prediction
+  3. Show: "Fix A (3 lines changed). Predicted impact: touches state mutation path. Preserves: cookie isolation invariant. Risk: MEDIUM — may affect session cleanup."
+  4. User approves/rejects per-fix. Rejected fixes feed into learning memory (B4).
+  5. Optionally: generate regression test for the fix.
+- **Effort**: 3-4 hours. **Priority**: MEDIUM.
+
+### B10. Disagreement committee (`/scan file dispute`)
+- **What**: Lightweight 2-prism mode. Pick two orthogonal prisms for the artifact, run both, compare ONLY where they disagree, synthesize. Much of full's self-correction benefit at 3 calls instead of 9.
+- **Why**: Full pipeline (9 calls, ~$0.50) is expensive. 3-way (4 calls, ~$0.25) still costs. A 3-call dispute mode (~$0.15) that surfaces the most interesting disagreements is the sweet spot for iterative use.
+- **Implementation**:
+  1. Auto-select 2 orthogonal prisms (e.g., identity + optimize, or error_resilience + api_surface) based on calibration or heuristic.
+  2. Run both in parallel.
+  3. Synthesis prompt: "Prism A found X. Prism B found Y. Where do they disagree? What does each one miss that the other sees? What would a third prism need to resolve?"
+- **Prism selection heuristic**: maximize pairwise uniqueness score from definitive grid (lowest: deep_scan/fix_cascade at 8/10, highest: l12/optimize at 10/10).
+- **Effort**: 2-3 hours. **Priority**: MEDIUM.
+
+### B11. Repository graph awareness
+- **What**: Dependency-aware targeting. Parse import graph, call graph, config edges. When analyzing file A, understand that files B and C encode the constraints causing A's problems.
+- **Why**: Current `/scan dir` treats each file independently. Real structural trade-offs span files — a conservation law in the routing layer constrains the middleware layer. Without graph awareness, the agent can name the local symptom but not the distributed cause.
+- **Implementation**:
+  - **Phase 1 (2h)**: Python import graph via AST. Build adjacency list. Rank files by in-degree (most-imported = most-constrained).
+  - **Phase 2 (3h)**: Cross-file context injection. When scanning file A, include signatures/docstrings of its top-3 dependencies as context.
+  - **Phase 3 (4h)**: Cross-file synthesis. After scanning N files independently, run synthesis with: "File A's conservation law is X. File B's is Y. What structural trade-off connects them?"
+  - **Phase 4 (future)**: Call graph analysis. "This function is where the bug appears, but these three callers encode the conservation law causing it."
+- **Effort**: Phase 1-2: 5 hours. Phase 3: 4 hours. **Priority**: HIGH — unlocks "real codebase" credibility.
+
+### B12. Operation selector that explains itself
+- **What**: Surface the strategist's reasoning as a visible planner. Before running analysis, show: "I chose identity + optimize because this file has API promises, hidden costs, and mutable state."
+- **Why**: Strategist prism already does this (2-call meta-agent: plan + adversarial critique). But users must explicitly invoke `/scan file strategist`. The explanation should be available as an optional prefix to any scan mode.
+- **Implementation**: `--explain` flag. Runs a lightweight calibration (existing `--calibrate`) and prepends: "Selected mode: X. Reason: Y. Alternative: Z." to the output. Zero extra API calls if calibration is cached.
+- **Effort**: 1-2 hours. **Priority**: LOW — nice UX, not a capability gap.
 
 ### Other unimplemented prism.py features
 - `/brainstorm` alias → routes to 3-way on text
@@ -129,9 +202,29 @@ All skills produce correct structure (generated lens, findings, constraint foote
 
 | # | Question | Blocker | Priority |
 |---|----------|---------|----------|
-| D1 | Blind evaluation of cross-lens addition | Human judges | MEDIUM |
+| D1 | Blind human evaluation of prism vs vanilla | Human judges | **HIGH** |
 | D2 | Cross-model: GPT/Llama/Mistral | External APIs | LOW |
 | D3 | Conservation law form prediction | ~$3 | LOW |
+
+### D1. Human Evaluation Protocol (biggest credibility gap)
+
+All depth scores are AI-evaluated. The scrambled vocabulary result (nonsense words scored 10/10) shows the rubric measures format compliance, not factual correctness. L12 factual accuracy is target-dependent: 97% on synthetic code, ~42% on real production code (Round 37). This is the single most important validation gap.
+
+**Proposed protocol:**
+
+1. **Raters**: 3-5 developers who did NOT build the tool. Mix of senior/mid-level. Ideally from different companies.
+2. **Targets**: 3 real codebases already used (Starlette routing.py, Click core.py, Tenacity retry.py) + 2 new unseen targets.
+3. **Conditions**: (a) Vanilla Sonnet, (b) Vanilla Opus, (c) Sonnet + L12, (d) Sonnet + oracle. Randomized presentation order. Raters don't know which is which.
+4. **Rubric** (two dimensions, scored separately):
+   - **Structural insight** (1-10): Does this reveal something about the code's design that wasn't obvious? Would a senior developer learn from this?
+   - **Factual accuracy** (1-10): Are specific claims (bug locations, API names, complexity classes, line numbers) correct? Verified against source.
+5. **Sample size**: 5 targets x 4 conditions x 3 raters = 60 scored outputs minimum.
+6. **Baseline**: The key question is whether prism outputs score higher than vanilla on structural insight while acknowledging the factual accuracy gap. If prisms score 9 on insight but 5 on accuracy while vanilla scores 7 on insight and 8 on accuracy, that's an honest and useful result.
+7. **Output**: Public results file in `output/human_eval/`. Report includes raw scores, inter-rater agreement, condition means, and confidence intervals.
+
+**Blocker**: Finding 3-5 willing external raters. Could start with 1-2 trusted developers for a pilot.
+**Effort**: ~4 hours to prepare materials, ~2 hours per rater, ~2 hours to analyze.
+**Priority**: HIGH — this is the biggest credibility gap identified by external reviewers.
 
 ---
 
@@ -1339,7 +1432,7 @@ Where: op = cognitive operation, R = prompt length (rate), W = model capacity, K
 |----------|------|----------|
 | **Hermes submission** (H) | SHIPPED | DONE |
 | **Prism immediate** (A) | 2 items (A2 commit, A3 scoring) | MEDIUM |
-| **Prism implementations** (B) | 5+4 features (B7 done) | MEDIUM — designs ready |
+| **Prism implementations** (B) | 10+4 features (B7 done, B2/B8/B11 HIGH) | MEDIUM-HIGH — B2 subsystem + B8 evidence ledger + B11 repo graph = highest leverage |
 | **Model routing** (F) | 3 items (F1 done+scored, F4 done) | MEDIUM — F2/F3 for new models |
 | **Knowledge gap detection** (J) | 3 open: J7, J10, J11 (J1-J6, J8-J9 done) | **HIGHEST** |
 | **VPS experiments** (C) | 4 | LOW-MEDIUM |
