@@ -314,7 +314,7 @@ Both Sonnet and Opus independently find the same structural pattern per domain. 
 
 ### The Cookers — prompts that write prompts
 
-The 33 built-in prisms cover code, security, behavior, and temporal analysis. But what about a domain you haven't seen before?
+The built-in prisms cover code, security, behavior, and temporal analysis. But what about a domain you haven't seen before?
 
 Cookers are meta-prompts that generate new prisms on the fly. You give a goal ("security analysis of routing code"), the cooker writes a custom prism tailored to that goal, then the prism runs on your input. The user never sees the intermediate step — `prism.py` handles it automatically.
 
