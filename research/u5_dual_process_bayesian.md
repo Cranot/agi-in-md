@@ -105,11 +105,29 @@ In the Bayesian framework: "this code's" is a strong likelihood function that ac
 
 Together they predict: a well-designed prism (1) reduces element interactivity below the model's capacity threshold (CLT), (2) activates System 1-compatible procedural generation (dual process), and (3) collapses the posterior onto a specific analytical concept (Bayesian). The result is deep, consistent, capacity-independent analysis.
 
+## Additional Papers Found (from agent research)
+
+- **Bellini-Leite (2024)** — "Dual Process Theory for Large Language Models" Adaptive Behavior 32(4). Directly proposes using dual-process theory to understand LLM failures. CoT = externalized System 2. Prisms = externalized cognitive scaffolds.
+- **Yu et al. (2025)** — "From System 1 to System 2: A Survey of Reasoning LLMs" arXiv:2502.17419. Base LLMs = System 1. Reasoning models (o1, o3) = System 2. Key: treats distinction as inference-time compute, not prompt. Prism framework adds missing dimension — prompt determines which system activates.
+- **Su et al. (2024)** — "Dualformer" ICLR 2025 arXiv:2410.09918. Implements dual-process ARCHITECTURALLY. Single transformer with fast/slow modes. Slow mode = 97.6% optimal on 30x30 mazes. Validates genuine mode-switching in transformers.
+- **Yu et al. (2024)** — "Distilling System 2 into System 1" arXiv:2407.06023. Some System 2 can be distilled but NOT all — complex math requiring CoT cannot be compressed. Parallels L7 being undistillable into System 1.
+- **Wakayama & Suzuki (2025)** — "In-Context Learning Is Provably Bayesian Inference" arXiv:2510.10981. Extends Xie with finite-sample theory. Risk = Bayes Gap (model-dependent) + Posterior Variance (task-dependent). **Prisms reduce Posterior Variance but can't reduce Bayes Gap.** Explains why Haiku + prism is stochastic but Sonnet + prism is consistent.
+- **"Bayesian Geometry of Transformer Attention" (2025)** — arXiv:2512.22471. First empirical proof that transformers realize exact Bayesian posteriors.
+- **Schreiter (2025)** — "Prompt Vocabulary Affects Domain Knowledge" arXiv:2505.17037. Vocabulary specificity has a "sweet spot" — overly specific verbs HURT in CoT. Validates "code nouns as mode triggers" finding.
+- **Cheng et al. (2025)** — "Think More, Hallucinate Less" ACL 2025. HaluSearch: System 1/2 switch mechanism during inference. Relevant to L12-G prism.
+
 ## Sources
 
 - [Kahneman — Dual Process](https://fs.blog/daniel-kahneman-the-two-systems/)
 - [Nature Reviews Psychology 2025 — Dual-process in LLMs](https://www.nature.com/articles/s44159-025-00506-1)
-- [Dualformer 2024](https://arxiv.org/html/2410.09918v2)
+- [Bellini-Leite 2024 — Dual Process for LLMs](https://journals.sagepub.com/doi/10.1177/10597123231206604)
+- [Yu et al. 2025 — System 1 to System 2 Survey](https://arxiv.org/abs/2502.17419)
+- [Dualformer ICLR 2025](https://arxiv.org/abs/2410.09918)
+- [Yu et al. 2024 — Distilling System 2](https://arxiv.org/abs/2407.06023)
 - [Xie et al. 2021 — Implicit Bayesian Inference](https://arxiv.org/abs/2111.02080)
+- [Wakayama & Suzuki 2025 — Provably Bayesian ICL](https://arxiv.org/abs/2510.10981)
+- [Bayesian Geometry of Attention 2025](https://arxiv.org/abs/2512.22471)
+- [Schreiter 2025 — Prompt Vocabulary](https://arxiv.org/abs/2505.17037)
+- [Cheng et al. 2025 — HaluSearch ACL](https://aclanthology.org/2025.findings-acl.417.pdf)
 - [Stanford SAIL Blog — Understanding In-Context Learning](http://ai.stanford.edu/blog/understanding-incontext/)
 - [Gentner 1983 — Structure-Mapping](https://groups.psych.northwestern.edu/gentner/papers/Gentner83.2b.pdf)

@@ -81,9 +81,24 @@ CLT provides the **most mechanistically precise explanation** of the project's f
 
 The predictions are **directly testable** without new infrastructure — just prompt variations on existing targets.
 
+## Additional Papers Found (from agent research)
+
+- **Arora et al. (2025)** — "Cognitive Load Limits in LLMs: Benchmarking Multi-Hop Reasoning" arXiv:2509.19517. Formal theory of computational cognitive load for LLMs. Two mechanisms: Context Saturation (extraneous load) and Attentional Residue (split-attention). **Critical finding:** Llama-3-8B and Mistral-7B achieved **0% accuracy across ALL conditions** on high-intrinsic-load tasks. Directly parallels L7 failure on Haiku.
+- **Xu et al. (2024)** — "Cognitive Overload Attack" arXiv:2410.11272. CLT applied adversarially — deliberately designed prompts induce cognitive overload with 99.99% success. Validates finite processing capacity in LLMs.
+- **Jaroslawicz et al. (2025)** — "IFScale: How Many Instructions Can LLMs Follow at Once?" arXiv:2507.11538. Performance degradation as instruction count increases. Threshold decay, linear decay, exponential decay patterns are model-dependent. Even frontier models = 68% at 500 instructions.
+- **Cowan (2001)** — "The Magical Number 4" BBS, 24. True working memory capacity is ~4 chunks (not Miller's 7±2) when rehearsal/chunking controlled for. With 4 interacting elements, load exceeds capacity. **This is the 4-operation sweet spot.**
+
+## Expertise Reversal Effect Prediction
+
+CLT predicts that as model capacity increases, detailed scaffolding may become counterproductive. The project sees hints: "Opus reconstructs from a 2-line hint" while "Sonnet needs explicit directives." Prediction: full L12 (332w) may produce LOWER quality on Opus than a 2-line hint — detailed steps force Opus through a suboptimal schema.
+
 ## Sources
 
 - [Sweller 2011 — Cognitive Load Theory](https://www.emrahakman.com/wp-content/uploads/2024/10/Cognitive-Load-Sweller-2011.pdf)
 - [Sweller 2010 — Element Interactivity](https://link.springer.com/article/10.1007/s10648-010-9128-5)
 - [Xu et al. 2025 — CLT applied to LLMs](https://arxiv.org/html/2506.06843v1)
+- [Arora et al. 2025 — Cognitive Load Limits in LLMs](https://arxiv.org/abs/2509.19517)
+- [Xu et al. 2024 — Cognitive Overload Attack](https://arxiv.org/abs/2410.11272)
+- [Jaroslawicz et al. 2025 — IFScale](https://arxiv.org/abs/2507.11538)
+- [Cowan 2001 — Magical Number 4](https://pubmed.ncbi.nlm.nih.gov/11515286/)
 - [Element Interactivity and Task Complexity 2023](https://link.springer.com/article/10.1007/s10648-023-09782-w)

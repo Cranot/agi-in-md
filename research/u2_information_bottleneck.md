@@ -51,10 +51,27 @@ The IB analogy is **promising but unproven**. The mapping is clean on paper (P19
 
 **Next step:** Run the parameterized word-count experiment (U2 experiment in ROADMAP). 10 targets × 10 compression levels = 100 runs. ~$5 on Haiku. 1-2 days.
 
+## Additional Papers Found (from agent research)
+
+- **Zaslavsky, Kemp, Regier & Tishby (2018)** — "Efficient Compression in Color Naming and Its Evolution" PNAS. Human color-naming systems achieve near-optimal IB compression. Languages = different positions on beta axis. Color categories evolve through structural phase transitions. **Direct analogue:** different prisms at different word counts = different beta positions. Compression levels = IB phase transitions.
+- **Yang et al. (2025)** — "Exploring Information Processing in LLMs: Insights from IB Theory" arXiv:2501.00999. LLMs compress input into task-specific spaces. Introduced IC-ICL (Information Compression-based Context Learning). Validates that prisms act as compression lenses defining the task space.
+- **QUITO-X (EMNLP 2025)** — arXiv:2408.10497. Context compression as IB problem. 80M model with IB achieves 25% better compression. Compressed contexts sometimes outperform full contexts — confirms P17 (compression forces domain neutrality).
+- **Deletang et al. (ICLR 2024)** — "Language Modeling Is Compression" arXiv:2309.10668. LLMs are general-purpose compressors. Chinchilla 70B beats domain-specific compressors.
+- **Futrell & Hahn (Nature Human Behaviour 2025)** — Natural languages minimize predictive information (excess entropy) — direct IB formulation at every linguistic level.
+
+## Key Limitation: P19 Is Multiplicative, IB Is Additive
+
+P19: Depth × Universality = constant (hyperbola). IB Lagrangian: L = I(X;T) - β·I(T;Y) (linear for fixed β). The IB curve is concave, not hyperbolic. However, if Universality is measured as number of working domains (discrete) and Depth as average quality, the product form could be an empirical approximation over a narrow range. Critical test: is the tradeoff steeper at low universality (IB predicts yes) or constant elasticity everywhere (hyperbola)?
+
 ## Sources
 
 - [Information Bottleneck — Wikipedia](https://en.wikipedia.org/wiki/Information_bottleneck_method)
 - [Tishby & Zaslavsky 2015 — arXiv](https://arxiv.org/abs/1503.02406)
 - [Saxe et al. 2018 — ICLR](https://web.iitd.ac.in/~sumeet/Saxe2018.pdf)
+- [Zaslavsky et al. 2018 — PNAS](https://www.pnas.org/doi/10.1073/pnas.1800521115)
+- [Yang et al. 2025 — arXiv](https://arxiv.org/abs/2501.00999)
+- [QUITO-X 2025 — arXiv](https://arxiv.org/abs/2408.10497)
+- [Deletang et al. 2024 — arXiv](https://arxiv.org/abs/2309.10668)
+- [Futrell & Hahn 2025 — arXiv](https://arxiv.org/abs/2405.12109)
 - [From Kolmogorov to LLMs — Liam Bai](https://liambai.com/minimum-description-length/)
 - [Bridging Kolmogorov Complexity and Transformers — arXiv 2025](https://arxiv.org/abs/2509.22445)
