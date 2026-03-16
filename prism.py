@@ -348,21 +348,23 @@ COOK_PROMPT = (
     "You are a domain discovery engine. Your job is to find ALL the genuinely "
     "different domains through which an artifact could be investigated.\n\n"
     "Do NOT generate cognitive prisms or prompts — only discover and name the domains.\n\n"
-    "For a code file, obvious domains include architecture, error handling, security. "
-    "Non-obvious domains include: marketing positioning, documentation strategy, "
-    "user onboarding friction, competitive differentiation, teaching value, "
-    "psychological assumptions about users, regulatory implications, API design "
-    "philosophy, operational cost, team scaling, etc.\n\n"
+    "For code: obvious domains include architecture, error handling, security. "
+    "Non-obvious: marketing positioning, user onboarding, competitive differentiation, "
+    "teaching value, psychological assumptions, regulatory implications, operational cost.\n\n"
+    "For documentation/text: obvious domains include accuracy, completeness, structure. "
+    "Non-obvious: what claims are unfalsifiable, what the document conceals about its "
+    "own limitations, what audience assumptions are encoded, what adjacent research "
+    "fields connect to the ideas, what testable predictions could be extracted, "
+    "what organizational/social dynamics the document implies.\n\n"
     "Each domain must be GENUINELY DIFFERENT — not variations of the same angle. "
     "'error handling' and 'exception propagation' are the SAME domain. "
     "'error handling' and 'user psychology' are DIFFERENT domains.\n\n"
     "ARTIFACT TYPE: {domain}\n\n"
     "For each domain, classify its type:\n"
-    "- 'structural' = derivable from artifact properties alone (architecture, security, "
-    "error_handling, performance, concurrency, testing, API_design, data_modeling)\n"
+    "- 'structural' = derivable from artifact properties alone\n"
     "- 'escape' = NOT derivable from artifact properties \u2014 requires external knowledge "
     "(regulatory, psychology, marketing, organizational, legal, ethics, accessibility, "
-    "user_experience, competitive, cultural)\n\n"
+    "user_experience, competitive, cultural, adjacent_research)\n\n"
     "Output ONLY a JSON array of discovered domains:\n"
     '[{{"name": "snake_case_domain_name", "description": "1-2 sentence description '
     'of what investigating this domain would reveal", "type": "structural_or_escape"}}, ...]'
@@ -3888,8 +3890,10 @@ class PrismREPL:
             user_input += (
                 f"\n\nSample artifact:\n\n{sample_content}")
 
+        # Scale timeout: 90s base + 30s per 1000 chars of sample
+        _timeout = min(180, 90 + len(user_input) // 1000 * 30)
         print(f"{C.CYAN}Discovering domains for '{domain}'...{C.RESET}")
-        raw = self._call_model(prompt, user_input, timeout=90,
+        raw = self._call_model(prompt, user_input, timeout=_timeout,
                                model=COOK_MODEL)
 
         parsed = self._parse_stage_json(raw, "discover")
@@ -9988,26 +9992,157 @@ class PrismREPL:
             intent=goal)
         self.session.model = _prev_target
 
+    # Extensions that are always code (no content sniffing needed)
+    _CODE_EXTS = {
+        "py", "js", "ts", "jsx", "tsx", "go", "rs", "java", "rb",
+        "sh", "c", "cpp", "h", "hpp", "cs", "swift", "kt", "scala",
+        "php", "pl", "r", "lua", "zig", "nim", "dart", "ex", "exs",
+        "hs", "ml", "fs", "clj", "v", "sv", "sql", "m", "mm",
+    }
+    # Extensions that are never code (documentation/prose/config)
+    _DOC_EXTS = {"md", "txt", "rst", "adoc", "org", "tex", "html"}
+    _CONFIG_EXTS = {"yaml", "yml", "toml", "ini", "cfg", "conf"}
+    _DATA_EXTS = {"json", "xml", "csv"}
+
     def _infer_domain(self, content, file_name, general=False,
                        for_discover=False):
         """Infer a domain label from content for prism caching or discover.
 
-        for_discover=True returns a broader label (e.g. 'python_software_artifact')
-        so the brainstorming isn't biased toward code-only domains.
+        for_discover=True returns a content-aware label that describes
+        WHAT the artifact is about, not what format it's in. For code,
+        this is language-based (e.g., 'python_software_artifact'). For
+        documentation and text, this is topic-based (e.g.,
+        'research_tool_documentation').
+
+        The key insight: the domain label tells the cooker/discover
+        engine what angle to brainstorm from. 'md_software_artifact'
+        is meaningless — markdown is a format, not a domain. The label
+        must describe the artifact's PURPOSE and SUBJECT MATTER.
         """
         if not general:
             ext = pathlib.Path(file_name).suffix.lstrip(".")
+
+            if ext in self._CODE_EXTS:
+                if for_discover:
+                    lang = {"py": "python", "js": "javascript",
+                            "ts": "typescript", "go": "go",
+                            "rs": "rust", "java": "java",
+                            "rb": "ruby", "sh": "shell",
+                            }.get(ext, ext)
+                    return f"{lang}_software_artifact"
+                return f"code_{ext}" if ext else "code"
+
+            # Non-code file: derive domain from content, not extension
             if for_discover:
-                # Broader label: the model should think about the artifact
-                # as a product/tool/system, not just "code to analyze"
-                lang = {"py": "python", "js": "javascript", "ts": "typescript",
-                        "go": "go", "rs": "rust", "java": "java", "rb": "ruby",
-                        "sh": "shell"}.get(ext, ext or "software")
-                return f"{lang}_software_artifact"
-            return f"code_{ext}" if ext else "code"
-        # For text, derive from first ~50 chars
-        slug = re.sub(r'[^a-z0-9]+', '_', content[:50].lower()).strip('_')
+                return self._infer_topic_from_content(
+                    content, file_name)
+            # For caching (not discover), extension is fine
+            if ext in self._DOC_EXTS:
+                return f"doc_{ext}"
+            if ext in self._CONFIG_EXTS:
+                return f"config_{ext}"
+            if ext in self._DATA_EXTS:
+                return f"data_{ext}"
+            # Unknown extension: check if content looks like code
+            if content and self._content_looks_like_code(content):
+                return f"code_{ext}" if ext else "code"
+            return f"doc_{ext}" if ext else "text"
+
+        # General text (no file): derive topic from content
+        if for_discover:
+            return self._infer_topic_from_content(content, file_name)
+        slug = re.sub(r'[^a-z0-9]+', '_',
+                      content[:50].lower()).strip('_')
         return slug[:30] if slug else "general"
+
+    @staticmethod
+    def _content_looks_like_code(content):
+        """Heuristic: does the first ~500 chars look like source code?"""
+        sample = content[:500]
+        code_signals = [
+            "def ", "class ", "function ", "import ", "from ",
+            "const ", "let ", "var ", "func ", "fn ", "pub ",
+            "package ", "#include", "using ", "namespace ",
+            "if (", "for (", "while (", "return ",
+        ]
+        return sum(1 for s in code_signals if s in sample) >= 2
+
+    @staticmethod
+    def _infer_topic_from_content(content, file_name):
+        """Derive a meaningful topic label from content for discover.
+
+        Reads headers, keywords, and structure to produce a label
+        like 'research_tool_documentation' or 'api_design_specification'
+        instead of 'md_software_artifact'.
+        """
+        sample = content[:2000].lower()
+        name = file_name.lower() if file_name else ""
+
+        # Check file name first for strong signals
+        name_signals = {
+            "readme": "project_documentation",
+            "changelog": "release_history",
+            "contributing": "contribution_guide",
+            "license": "legal_document",
+            "roadmap": "project_roadmap",
+            "spec": "technical_specification",
+            "rfc": "technical_proposal",
+            "design": "design_document",
+            "architecture": "architecture_document",
+            "api": "api_documentation",
+            "tutorial": "educational_tutorial",
+            "guide": "user_guide",
+        }
+        for signal, label in name_signals.items():
+            if signal in name:
+                return label
+
+        # Check content for topic signals
+        topic_keywords = {
+            "research_methodology": [
+                "experiment", "hypothesis", "validation",
+                "results", "findings", "tested"],
+            "software_tool_documentation": [
+                "install", "usage", "cli", "command",
+                "configuration", "getting started"],
+            "api_specification": [
+                "endpoint", "request", "response",
+                "authentication", "rate limit"],
+            "academic_paper": [
+                "abstract", "introduction", "methodology",
+                "conclusion", "references", "citation"],
+            "business_strategy": [
+                "market", "revenue", "customer", "growth",
+                "competitive", "pricing"],
+            "legal_document": [
+                "hereby", "whereas", "agreement",
+                "liability", "indemnif"],
+            "technical_analysis": [
+                "conservation law", "structural",
+                "prism", "compression", "taxonomy"],
+        }
+
+        best_topic = "general_document"
+        best_score = 0
+        for topic, keywords in topic_keywords.items():
+            score = sum(1 for k in keywords if k in sample)
+            if score > best_score:
+                best_score = score
+                best_topic = topic
+
+        # Need at least 2 keyword hits to be confident
+        if best_score < 2:
+            # Fall back to first markdown header if available
+            import re as _re_topic
+            h1 = _re_topic.search(r'^#\s+(.+)', content[:500],
+                                   _re_topic.MULTILINE)
+            if h1:
+                slug = _re_topic.sub(
+                    r'[^a-z0-9]+', '_',
+                    h1.group(1).lower()).strip('_')
+                return slug[:40] + "_document" if slug else best_topic
+
+        return best_topic
 
     def _record_expand_outcome(self, file_name, area_name):
         """Check if expand run produced output and record yield outcome.
