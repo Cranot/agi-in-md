@@ -448,7 +448,7 @@ Top 10 most important (full list in `memory/cooker_experiments.md`):
 
 | File | Contents |
 |------|----------|
-| `prism.py` | Main tool (~8400 lines, 33 tests) |
+| `prism.py` | Main tool (~13,500 lines, 56 tests) |
 | `prisms/l12.md` | Default L12 prompt (332w) |
 | `prisms/l12_general.md` | Domain-neutral L12 for non-code |
 | `prisms/*.md` | 6 portfolio prisms + pipeline variants |

@@ -118,7 +118,7 @@ Status legend: [ ] = not started, [~] = in progress, [x] = done, [!] = blocked
 
 ### I6. Test count off-by-one
 - **What**: Previously reported as 31-32 passing
-- **Status**: [x] DONE — All 33 tests pass. Counter is hardcoded and correct. Old observation was from previous version.
+- **Status**: [x] DONE — All 56 tests pass (was 33, expanded Mar 16). Counter is hardcoded and correct.
 
 ### I7. Principle index fragmented
 - **What**: P1-P197 scattered across experiment_log, alt_ops_results, CLAUDE.md, memory files

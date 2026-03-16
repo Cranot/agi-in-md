@@ -1506,6 +1506,985 @@ def test_intent_custom_intent_unification():
     print("  test_intent_custom_intent_unification: PASS")
 
 
+def test_explain_scan_output():
+    """B12: _explain_scan produces output with expected sections."""
+    import io
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+    repl.session = type("S", (), {"model": "sonnet"})()
+
+    content = "def foo():\n    return 42\n" * 20  # ~40 lines of code
+
+    # Capture stdout
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._explain_scan(content, "example.py", general=False)
+        output = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    # Verify key sections present
+    assert "Available modes:" in output, f"Missing 'Available modes' in output"
+    assert "Recommendation:" in output, f"Missing 'Recommendation' in output"
+    # Verify some mode names are listed
+    assert "full" in output.lower(), "Missing 'full' mode"
+    assert "behavioral" in output.lower(), "Missing 'behavioral' mode"
+    assert "discover" in output.lower(), "Missing 'discover' mode"
+    # Verify input characteristics are shown
+    assert "code" in output.lower(), "Should identify input as code"
+
+    # Test general (non-code) mode
+    sys.stdout = io.StringIO()
+    try:
+        repl._explain_scan("Some text to analyze", "notes.txt", general=True)
+        output_general = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    assert "Available modes:" in output_general
+    assert "Recommendation:" in output_general
+    assert "text" in output_general.lower(), "Should identify input as text"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_explain_scan_output: PASS")
+
+
+def test_explain_scan_large_file_recommends_full():
+    """B12: _explain_scan recommends 'full' for large code files (>500 lines)."""
+    import io
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+    repl.session = type("S", (), {"model": "sonnet"})()
+
+    # Create content with >500 lines
+    content = "def func():\n    pass\n" * 300  # 600 lines
+
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._explain_scan(content, "big_module.py", general=False)
+        output = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    # Large files should recommend full
+    assert "full" in output, "Large file should recommend full mode"
+    assert ">500 lines" in output or "multi-prism" in output.lower(), \
+        "Should mention file size as reason"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_explain_scan_large_file_recommends_full: PASS")
+
+
+def test_record_learning_write_read_cycle():
+    """B4: _record_learning write + read cycle with multiple event types."""
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    # Write multiple learning events
+    repl._record_learning("accepted_fix", {
+        "title": "Null check bug", "file": "auth.py", "reason": "valid fix"
+    })
+    repl._record_learning("rejected_fix", {
+        "title": "Race condition", "file": "server.py", "reason": "false positive"
+    })
+    repl._record_learning("style_constraint", {
+        "pattern": "prefer isinstance over type()", "file": "utils.py"
+    })
+
+    # Read back
+    learn_path = tmp / ".deep" / "learning.json"
+    assert learn_path.exists(), "learning.json should exist after recording"
+
+    entries = json.loads(learn_path.read_text(encoding="utf-8"))
+    assert isinstance(entries, list), "Entries should be a list"
+    assert len(entries) == 3, f"Expected 3 entries, got {len(entries)}"
+
+    # Verify first entry
+    assert entries[0]["type"] == "accepted_fix"
+    assert entries[0]["title"] == "Null check bug"
+    assert entries[0]["file"] == "auth.py"
+    assert "date" in entries[0], "Entry should have a date"
+
+    # Verify second entry
+    assert entries[1]["type"] == "rejected_fix"
+    assert entries[1]["reason"] == "false positive"
+
+    # Verify third entry
+    assert entries[2]["type"] == "style_constraint"
+    assert entries[2]["pattern"] == "prefer isinstance over type()"
+
+    # Add another entry and verify append behavior
+    repl._record_learning("false_positive", {
+        "title": "Unused import", "file": "main.py"
+    })
+    entries2 = json.loads(learn_path.read_text(encoding="utf-8"))
+    assert len(entries2) == 4, f"Expected 4 entries after append, got {len(entries2)}"
+    assert entries2[3]["type"] == "false_positive"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_record_learning_write_read_cycle: PASS")
+
+
+def test_save_deep_finding_constraint_history():
+    """B4: _save_deep_finding writes constraint_history.md with prism and file info."""
+    import tempfile
+    import threading
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+    repl.session = type("S", (), {"model": "sonnet"})()
+    # PrismREPL._findings_lock is a class-level Lock, already available
+    # But we need _discover_cache_key to work — it's a @staticmethod
+
+    # Write a finding long enough to save (>=50 chars)
+    output = "This is a test finding with enough content. " * 5  # >50 chars
+
+    # Redirect stdout to suppress print output
+    import io
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_deep_finding("router.py", "l12", output)
+    finally:
+        sys.stdout = old_stdout
+
+    # Verify constraint_history.md was created
+    hist_path = tmp / ".deep" / "constraint_history.md"
+    assert hist_path.exists(), "constraint_history.md should exist"
+
+    hist_content = hist_path.read_text(encoding="utf-8")
+    assert "l12" in hist_content, "History should contain prism name 'l12'"
+    assert "router.py" in hist_content, "History should contain file name 'router.py'"
+    assert "sonnet" in hist_content, "History should contain model name"
+    assert "V=C" in hist_content, \
+        "History should contain constraint notation (S×V=C)"
+
+    # Verify findings file was also created
+    findings_path = tmp / ".deep" / "findings" / "router.md"
+    assert findings_path.exists(), "findings/router.md should exist"
+    findings_content = findings_path.read_text(encoding="utf-8")
+    assert "## L12" in findings_content, "Findings should have L12 section header"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_save_deep_finding_constraint_history: PASS")
+
+
+def test_dispute_prism_selection():
+    """B10: _run_dispute selects correct prism pairs for code vs text.
+
+    Tests the actual _run_dispute method's source code to verify prism
+    selection, not a duplicated inline copy.
+    """
+    import inspect
+    # Read the actual source of _run_dispute to verify prism selection
+    source = inspect.getsource(PrismREPL._run_dispute)
+
+    # Code mode: should select l12 + identity
+    assert '"l12", "identity"' in source, \
+        "Code mode should select l12 + identity"
+    # Text mode: should select l12_universal + claim
+    assert '"l12_universal", "claim"' in source, \
+        "Text mode should select l12_universal + claim"
+
+    # Verify these prisms exist in OPTIMAL_PRISM_MODEL
+    from prism import OPTIMAL_PRISM_MODEL
+    for p in ("l12", "identity", "l12_universal", "claim"):
+        assert p in OPTIMAL_PRISM_MODEL, \
+            f"Dispute prism '{p}' should be in OPTIMAL_PRISM_MODEL"
+
+    print("  test_dispute_prism_selection: PASS")
+
+
+def test_save_gaps_to_kb():
+    """J10: _save_gaps_to_kb creates KB entries and deduplicates."""
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    # Prepare gap JSON (as model would output it)
+    gaps = json.dumps([
+        {"claim": "Router supports HTTP/2", "tier": "KNOWLEDGE",
+         "confidence": 0.3, "fill_source": "API_DOCS"},
+        {"claim": "No race conditions in dispatch", "tier": "ASSUMED",
+         "confidence": 0.5, "fill_source": "BENCHMARK"},
+    ])
+
+    # Redirect stdout to suppress print output
+    import io
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("router.py", gaps)
+    finally:
+        sys.stdout = old_stdout
+
+    # Verify KB file was created
+    kb_path = tmp / ".deep" / "knowledge" / "router.json"
+    assert kb_path.exists(), "KB file should exist after saving gaps"
+
+    entries = json.loads(kb_path.read_text(encoding="utf-8"))
+    assert len(entries) == 2, f"Expected 2 KB entries, got {len(entries)}"
+    assert entries[0]["claim"] == "Router supports HTTP/2"
+    assert entries[0]["type"] == "KNOWLEDGE"
+    assert entries[0]["verified"] is False
+    assert entries[1]["claim"] == "No race conditions in dispatch"
+
+    # Test deduplication: save same gaps again
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("router.py", gaps)
+    finally:
+        sys.stdout = old_stdout
+
+    entries2 = json.loads(kb_path.read_text(encoding="utf-8"))
+    assert len(entries2) == 2, \
+        f"Expected 2 entries after dedup (no duplicates), got {len(entries2)}"
+
+    # Add a new gap alongside existing ones
+    gaps_new = json.dumps([
+        {"claim": "Router supports HTTP/2", "tier": "KNOWLEDGE",
+         "confidence": 0.3, "fill_source": "API_DOCS"},  # duplicate
+        {"claim": "Thread pool size is configurable", "tier": "STRUCTURAL",
+         "confidence": 0.8, "fill_source": "CHANGELOG"},  # new
+    ])
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("router.py", gaps_new)
+    finally:
+        sys.stdout = old_stdout
+
+    entries3 = json.loads(kb_path.read_text(encoding="utf-8"))
+    assert len(entries3) == 3, \
+        f"Expected 3 entries (2 old + 1 new), got {len(entries3)}"
+    claims = [e["claim"] for e in entries3]
+    assert "Thread pool size is configurable" in claims
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_save_gaps_to_kb: PASS")
+
+
+def test_save_gaps_to_kb_markdown_fenced():
+    """J10: _save_gaps_to_kb handles JSON wrapped in markdown code fences."""
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    # JSON wrapped in markdown fences (common model output format)
+    fenced_gaps = '```json\n[{"claim": "Uses global state", "tier": "STRUCTURAL", "confidence": 0.9, "fill_source": "API_DOCS"}]\n```'
+
+    import io
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("utils.py", fenced_gaps)
+    finally:
+        sys.stdout = old_stdout
+
+    kb_path = tmp / ".deep" / "knowledge" / "utils.json"
+    assert kb_path.exists(), "KB file should exist for markdown-fenced input"
+    entries = json.loads(kb_path.read_text(encoding="utf-8"))
+    assert len(entries) == 1
+    assert entries[0]["claim"] == "Uses global state"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_save_gaps_to_kb_markdown_fenced: PASS")
+
+
+def test_cmd_kb_list_and_show():
+    """J10: _cmd_kb list and show commands against pre-populated KB."""
+    import io
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    # Pre-populate KB directory
+    kb_dir = tmp / ".deep" / "knowledge"
+    kb_dir.mkdir(parents=True, exist_ok=True)
+
+    kb_data_router = [
+        {"claim": "Router supports HTTP/2", "confidence": 0.3,
+         "source": "API_DOCS", "verified": False},
+        {"claim": "No race conditions", "confidence": 0.5,
+         "source": "BENCHMARK", "verified": True},
+    ]
+    (kb_dir / "router.json").write_text(
+        json.dumps(kb_data_router), encoding="utf-8")
+
+    kb_data_auth = [
+        {"claim": "Auth uses JWT tokens", "confidence": 0.9,
+         "source": "CHANGELOG", "verified": False},
+    ]
+    (kb_dir / "auth.json").write_text(
+        json.dumps(kb_data_auth), encoding="utf-8")
+
+    # Test /kb (list all)
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._cmd_kb("")
+        output_list = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    assert "router" in output_list, "Should list router KB file"
+    assert "auth" in output_list, "Should list auth KB file"
+    assert "2" in output_list, "Router should show 2 entries"
+    assert "1" in output_list, "Auth should show 1 entry"
+    assert "3" in output_list, "Total should be 3 entries"
+
+    # Test /kb router.py (show specific file)
+    sys.stdout = io.StringIO()
+    try:
+        repl._cmd_kb("router.py")
+        output_show = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    assert "Router supports HTTP/2" in output_show, \
+        "Should show first claim"
+    assert "No race conditions" in output_show, \
+        "Should show second claim"
+    assert "verified" in output_show.lower(), \
+        "Should show verification status"
+
+    # Test /kb for nonexistent file
+    sys.stdout = io.StringIO()
+    try:
+        repl._cmd_kb("nonexistent.py")
+        output_missing = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    assert "No KB entries" in output_missing or "no" in output_missing.lower(), \
+        f"Should indicate no entries for nonexistent file, got: {output_missing}"
+
+    # Test /kb on empty KB
+    import shutil
+    shutil.rmtree(kb_dir, ignore_errors=True)
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    # No JSON files in dir
+    sys.stdout = io.StringIO()
+    try:
+        repl._cmd_kb("")
+        output_empty = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    assert "empty" in output_empty.lower(), \
+        f"Should indicate empty KB, got: {output_empty}"
+
+    # Cleanup
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_cmd_kb_list_and_show: PASS")
+
+
+def test_cmd_kb_no_kb_dir():
+    """J10: _cmd_kb handles missing .deep/knowledge/ directory."""
+    import io
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+    # No .deep/knowledge/ dir exists
+
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._cmd_kb("")
+        output = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    assert "No knowledge base" in output or "no" in output.lower(), \
+        f"Should indicate no KB exists, got: {output}"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_cmd_kb_no_kb_dir: PASS")
+
+
+def test_parse_scan_args_explain_dispute_reflect():
+    """Parse args: explain, dispute, reflect modes."""
+    parse = PrismREPL._parse_scan_args
+
+    # explain
+    r = parse("file.py explain")
+    assert r["mode"] == "explain", f"Expected explain, got {r['mode']}"
+    assert r["arg"] == "file.py"
+
+    # dispute
+    r = parse("file.py dispute")
+    assert r["mode"] == "dispute", f"Expected dispute, got {r['mode']}"
+    assert r["arg"] == "file.py"
+
+    # reflect
+    r = parse("file.py reflect")
+    assert r["mode"] == "reflect", f"Expected reflect, got {r['mode']}"
+    assert r["arg"] == "file.py"
+
+    # Bare keyword (no file)
+    r = parse("explain")
+    assert r["mode"] == "explain", f"Bare 'explain' should parse, got {r['mode']}"
+    assert r["arg"] is None
+
+    r = parse("dispute")
+    assert r["mode"] == "dispute", f"Bare 'dispute' should parse, got {r['mode']}"
+    assert r["arg"] is None
+
+    r = parse("reflect")
+    assert r["mode"] == "reflect", f"Bare 'reflect' should parse, got {r['mode']}"
+    assert r["arg"] is None
+
+    # Other new modes: evolve, oracle, scout, verified, gaps, l12g
+    for mode in ("evolve", "oracle", "scout", "verified", "gaps", "l12g"):
+        r = parse(f"file.py {mode}")
+        assert r["mode"] == mode, f"Expected {mode}, got {r['mode']}"
+        assert r["arg"] == "file.py"
+
+    print("  test_parse_scan_args_explain_dispute_reflect: PASS")
+
+
+def test_explain_scan_text_mode():
+    """_explain_scan with general=True mentions l12_universal or SDL, recommends 3way."""
+    import io
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+    repl.session = type("S", (), {"model": "sonnet"})()
+
+    content = "This is a reasoning text about cognitive frameworks. " * 20
+
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._explain_scan(content, "notes.txt", general=True)
+        output = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    # For text mode with sonnet, should mention l12_universal (not plain "L12" as default)
+    assert "l12_universal" in output or "SDL" in output, \
+        f"Text mode should mention l12_universal or SDL, got:\n{output}"
+    # Should NOT show "Single L12" as default (that's code mode)
+    assert "Single L12" not in output, \
+        f"Text mode should NOT show 'Single L12' as default"
+    # Should recommend 3way for deeper analysis
+    assert "3way" in output, \
+        f"Text mode should recommend '3way' for deeper analysis, got:\n{output}"
+
+    # Test with haiku model (should show SDL instead of l12_universal)
+    repl2 = PrismREPL.__new__(PrismREPL)
+    repl2.working_dir = tmp
+    repl2.session = type("S", (), {"model": "haiku"})()
+
+    sys.stdout = io.StringIO()
+    try:
+        repl2._explain_scan(content, "notes.txt", general=True)
+        output_haiku = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    assert "SDL" in output_haiku, \
+        f"Haiku text mode should mention SDL, got:\n{output_haiku}"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_explain_scan_text_mode: PASS")
+
+
+def test_cmd_kb_clear():
+    """_cmd_kb('clear') removes the .deep/knowledge/ directory."""
+    import io
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    # Create .deep/knowledge/ with a file
+    kb_dir = tmp / ".deep" / "knowledge"
+    kb_dir.mkdir(parents=True, exist_ok=True)
+    (kb_dir / "router.json").write_text(
+        json.dumps([{"claim": "test", "verified": False}]),
+        encoding="utf-8")
+    assert kb_dir.exists(), "KB dir should exist before clear"
+    assert (kb_dir / "router.json").exists(), "KB file should exist"
+
+    # Call _cmd_kb("clear")
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._cmd_kb("clear")
+        output = sys.stdout.getvalue()
+    finally:
+        sys.stdout = old_stdout
+
+    # Verify directory is removed
+    assert not kb_dir.exists(), \
+        "KB directory should be removed after clear"
+    assert "cleared" in output.lower(), \
+        f"Should confirm clearing, got: {output}"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_cmd_kb_clear: PASS")
+
+
+def test_record_learning_corrupt_json():
+    """_record_learning recovers gracefully from corrupt learning.json."""
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    # Create corrupt learning.json
+    learn_dir = tmp / ".deep"
+    learn_dir.mkdir(parents=True, exist_ok=True)
+    learn_path = learn_dir / "learning.json"
+    learn_path.write_text("not json", encoding="utf-8")
+
+    # Record a new learning event — should NOT crash
+    repl._record_learning("accepted_fix", {
+        "title": "Test fix", "file": "test.py"
+    })
+
+    # Verify it overwrote with valid JSON containing just the new entry
+    content = learn_path.read_text(encoding="utf-8")
+    entries = json.loads(content)
+    assert isinstance(entries, list), "Should be a valid JSON list"
+    assert len(entries) == 1, \
+        f"Expected 1 entry (corrupt data discarded), got {len(entries)}"
+    assert entries[0]["type"] == "accepted_fix"
+    assert entries[0]["title"] == "Test fix"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_record_learning_corrupt_json: PASS")
+
+
+def test_constraint_history_cap():
+    """_save_deep_finding caps constraint_history.md at ~200 entries."""
+    import io
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+    repl.session = type("S", (), {"model": "sonnet"})()
+
+    # Create a constraint_history.md with 250 fake entries
+    hist_dir = tmp / ".deep"
+    hist_dir.mkdir(parents=True, exist_ok=True)
+    hist_path = hist_dir / "constraint_history.md"
+
+    fake_entries = []
+    for i in range(250):
+        fake_entries.append(
+            f"\n### 2026-03-{(i % 28) + 1:02d} 10:00 — l12 on file_{i}.py (sonnet)\n"
+            f"- **Prism**: l12\n"
+            f"- **Model**: sonnet\n"
+            f"- **Target**: file_{i}.py\n"
+            f"- **Constraint**: S\u00d7V=C applies\n"
+            f"---\n")
+    hist_path.write_text("".join(fake_entries), encoding="utf-8")
+
+    # Verify we have 250 entries
+    raw = hist_path.read_text(encoding="utf-8")
+    blocks_before = raw.split("\n### ")
+    # First split element may be empty or preamble
+    entry_count_before = len([b for b in blocks_before if b.strip()])
+    assert entry_count_before >= 250, \
+        f"Expected >=250 entries before save, got {entry_count_before}"
+
+    # Now save one more finding (triggers the cap logic)
+    output = "This is a test finding with enough content to be saved. " * 5
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_deep_finding("newfile.py", "l12", output)
+    finally:
+        sys.stdout = old_stdout
+
+    # Verify the cap was applied
+    raw_after = hist_path.read_text(encoding="utf-8")
+    blocks_after = raw_after.split("\n### ")
+    entry_count_after = len([b for b in blocks_after if b.strip()])
+    # Cap keeps preamble + 199 entries = 200 blocks, plus the new entry = 201.
+    # But split counts may vary by ±1 depending on preamble content.
+    assert entry_count_after <= 202, \
+        f"Expected <=202 entries after cap, got {entry_count_after}"
+    assert entry_count_after < 250, \
+        f"Cap should have trimmed from 250 to ~200, got {entry_count_after}"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_constraint_history_cap: PASS")
+
+
+def test_learning_json_cap():
+    """_record_learning caps learning.json at 500 entries."""
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    # Create learning.json with 510 fake entries
+    learn_dir = tmp / ".deep"
+    learn_dir.mkdir(parents=True, exist_ok=True)
+    learn_path = learn_dir / "learning.json"
+
+    fake_entries = []
+    for i in range(510):
+        fake_entries.append({
+            "type": "accepted_fix",
+            "date": "2026-03-01",
+            "title": f"Fix #{i}",
+            "file": f"file_{i}.py",
+        })
+    learn_path.write_text(json.dumps(fake_entries), encoding="utf-8")
+
+    # Verify we have 510 entries
+    loaded = json.loads(learn_path.read_text(encoding="utf-8"))
+    assert len(loaded) == 510, f"Expected 510 entries, got {len(loaded)}"
+
+    # Record one more entry (triggers the cap)
+    repl._record_learning("false_positive", {
+        "title": "New fix", "file": "new.py"
+    })
+
+    # Verify cap was applied
+    loaded_after = json.loads(learn_path.read_text(encoding="utf-8"))
+    assert len(loaded_after) <= 500, \
+        f"Expected <=500 entries after cap, got {len(loaded_after)}"
+    # The newest entry should be present
+    assert loaded_after[-1]["title"] == "New fix", \
+        "Newest entry should be at the end"
+    assert loaded_after[-1]["type"] == "false_positive"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_learning_json_cap: PASS")
+
+
+def test_parse_scan_args_all_modes():
+    """Comprehensive test: every mode keyword parses correctly with a filename."""
+    parse = PrismREPL._parse_scan_args
+
+    # All trailing keyword modes
+    modes = [
+        "full", "discover", "behavioral", "3way", "meta",
+        "reflect", "dispute", "verified", "l12g", "gaps",
+        "evolve", "oracle", "scout", "strategist", "explain",
+    ]
+
+    for mode in modes:
+        r = parse(f"file.py {mode}")
+        assert r["mode"] == mode, \
+            f"'file.py {mode}' should parse mode='{mode}', got '{r['mode']}'"
+        assert r["arg"] == "file.py", \
+            f"'file.py {mode}' should have arg='file.py', got '{r['arg']}'"
+
+    # Bare keywords (no file) should also work
+    for mode in modes:
+        r = parse(mode)
+        assert r["mode"] == mode, \
+            f"Bare '{mode}' should parse mode='{mode}', got '{r['mode']}'"
+        assert r["arg"] is None, \
+            f"Bare '{mode}' should have arg=None, got '{r['arg']}'"
+
+    # expand is a special mode (not a trailing keyword)
+    r = parse("file.py expand")
+    assert r["mode"] == "expand", f"Expected expand, got {r['mode']}"
+    assert r["arg"] == "file.py"
+
+    # fix is also special
+    r = parse("file.py fix")
+    assert r["mode"] == "fix", f"Expected fix, got {r['mode']}"
+    r = parse("file.py fix auto")
+    assert r["mode"] == "fix" and r["fix_auto"] is True
+
+    # discover full is a compound mode
+    r = parse("file.py discover full")
+    assert r["mode"] == "discover_full", \
+        f"Expected discover_full, got {r['mode']}"
+
+    # Default (no mode keyword) → single
+    r = parse("file.py")
+    assert r["mode"] == "single", \
+        f"Default should be 'single', got {r['mode']}"
+
+    print("  test_parse_scan_args_all_modes: PASS")
+
+
+def test_save_gaps_empty_json():
+    """_save_gaps_to_kb handles empty string, invalid JSON, and empty list without crashing."""
+    import tempfile
+
+    repl = PrismREPL.__new__(PrismREPL)
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    repl.working_dir = tmp
+
+    import io
+    old_stdout = sys.stdout
+
+    # Test 1: Empty string — should not crash, no KB file created
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("test.py", "")
+    finally:
+        sys.stdout = old_stdout
+    kb_path = tmp / ".deep" / "knowledge" / "test.json"
+    assert not kb_path.exists(), \
+        "Empty string should not create KB file"
+
+    # Test 2: Invalid JSON — should not crash, no KB file created
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("test.py", "not valid json at all")
+    finally:
+        sys.stdout = old_stdout
+    assert not kb_path.exists(), \
+        "Invalid JSON should not create KB file"
+
+    # Test 3: Empty JSON array — should not crash, no KB file created
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("test.py", "[]")
+    finally:
+        sys.stdout = old_stdout
+    assert not kb_path.exists(), \
+        "Empty JSON array should not create KB file"
+
+    # Test 4: Array of objects without 'claim' field — should not create entries
+    sys.stdout = io.StringIO()
+    try:
+        repl._save_gaps_to_kb("test.py", '[{"tier": "ASSUMED"}]')
+    finally:
+        sys.stdout = old_stdout
+    assert not kb_path.exists(), \
+        "Objects without 'claim' should not create KB entries"
+
+    # Cleanup
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+
+    print("  test_save_gaps_empty_json: PASS")
+
+
+def test_split_into_subsystems_python():
+    """B2: AST split on Python code produces correct subsystems."""
+    from prism import _split_into_subsystems
+
+    code = (
+        "import os\n\n"
+        "class Router:\n" + "    def handle(self): pass\n" * 15 + "\n"
+        "class Mount:\n" + "    def matches(self): pass\n" * 15 + "\n"
+        "def helper():\n" + "    return 1\n" * 12 + "\n"
+    )
+    subs = _split_into_subsystems(code, "routing.py")
+    names = [s["name"] for s in subs]
+    assert "Router" in names, f"Missing Router in {names}"
+    assert "Mount" in names, f"Missing Mount in {names}"
+    assert all(s["end_line"] - s["start_line"] >= 9 for s in subs), \
+        "All subsystems should have 10+ lines"
+    print("  test_split_into_subsystems_python: PASS")
+
+
+def test_split_into_subsystems_edge_cases():
+    """B2: Split handles empty, tiny, non-Python, too-many-classes."""
+    from prism import _split_into_subsystems
+
+    # Empty
+    subs = _split_into_subsystems("", "empty.py")
+    assert len(subs) == 1
+
+    # Tiny (< 30 lines)
+    subs = _split_into_subsystems("x = 1\n" * 10, "tiny.py")
+    assert len(subs) == 1
+
+    # 20 classes → capped at 8
+    code = "\n".join(
+        f"class C{i}:\n" + "    pass\n" * 10
+        for i in range(20))
+    subs = _split_into_subsystems(code, "many.py")
+    assert len(subs) <= 8, f"Expected <=8, got {len(subs)}"
+
+    # JavaScript (regex fallback — needs 30+ lines)
+    js = ("class App {\n" + "  run() {}\n" * 20 + "}\n"
+          + "function helper() {\n" + "  return 1;\n" * 15 + "}\n")
+    subs = _split_into_subsystems(js, "app.js")
+    names = [s["name"] for s in subs]
+    assert "App" in names, f"Expected App in {names}"
+
+    print("  test_split_into_subsystems_edge_cases: PASS")
+
+
+def test_extract_questions_from_prereq():
+    """Shared question extractor handles numbered + bullet + confidence tags."""
+    questions = PrismREPL._extract_questions_from_prereq(
+        "1. What is the default port for PostgreSQL?\n"
+        "2. How does asyncpg handle connections? [LOW]\n"
+        "3. Not a question\n"
+        "- What retry strategy works best?\n"
+        "4. Too short?\n"
+    )
+    assert len(questions) >= 3, f"Expected >=3 questions, got {len(questions)}"
+    assert any("PostgreSQL" in q for q in questions)
+    assert any("asyncpg" in q for q in questions)
+    # Confidence tags should be stripped
+    assert not any("[LOW]" in q for q in questions)
+    # Dedup (questions must be >15 chars)
+    questions2 = PrismREPL._extract_questions_from_prereq(
+        "1. What is the same repeated question here?\n"
+        "2. What is the same repeated question here?\n"
+        "3. What is a completely different question?\n")
+    assert len(questions2) == 2, f"Dedup failed: {questions2}"
+    print("  test_extract_questions_from_prereq: PASS")
+
+
+def test_cross_project_context():
+    """E: Cross-project detection is precise, not over-matching."""
+    repl = PrismREPL.__new__(PrismREPL)
+
+    # Pure math — should return 0
+    laws = repl._get_cross_project_context(
+        "def fibonacci(n): return n", "math.py")
+    assert len(laws) == 0, f"Math code should get 0 laws, got {laws}"
+
+    # Async web code — should return 2
+    laws = repl._get_cross_project_context(
+        "async def handle(scope, receive, send): "
+        "route = self.router.match(scope)", "app.py")
+    assert 1 <= len(laws) <= 3, f"Async web should get 1-3 laws, got {len(laws)}"
+
+    # Max cap is 3
+    huge = "route async retry middleware state " * 100
+    laws = repl._get_cross_project_context(huge, "everything.py")
+    assert len(laws) <= 3, f"Should cap at 3, got {len(laws)}"
+
+    print("  test_cross_project_context: PASS")
+
+
+def test_confidence_gate_feedback():
+    """Confidence gate: only persist findings with structural markers."""
+    import tempfile, pathlib, threading
+
+    tmp = tempfile.mkdtemp()
+    repl = PrismREPL.__new__(PrismREPL)
+    repl.working_dir = pathlib.Path(tmp)
+    repl.session = type("S", (), {"model": "sonnet", "total_cost_usd": 0})()
+    repl._findings_lock = threading.Lock()
+
+    # Output WITH conservation law → should create profile + KB
+    good_output = (
+        "## Conservation Law\n"
+        "flexibility × security = constant\n"
+        "## STRUCTURAL\nRouter handles dispatch and 404.\n"
+        + "Analysis continues with details.\n" * 30)
+    repl._save_deep_finding("good.py", "l12", good_output)
+    prof = pathlib.Path(tmp) / ".deep" / "profile.json"
+    assert prof.exists(), "Profile should exist for structural output"
+
+    # Output WITHOUT markers → should NOT create profile
+    import shutil
+    shutil.rmtree(pathlib.Path(tmp) / ".deep")
+    bad_output = "The code looks fine. No issues found. " * 20
+    repl._save_deep_finding("bad.py", "l12", bad_output)
+    prof2 = pathlib.Path(tmp) / ".deep" / "profile.json"
+    assert not prof2.exists(), "Profile should NOT exist for non-structural output"
+
+    shutil.rmtree(tmp, ignore_errors=True)
+    print("  test_confidence_gate_feedback: PASS")
+
+
+def test_profile_update():
+    """D: Profile accumulates conservation laws and patterns."""
+    import tempfile, pathlib, threading, json
+
+    tmp = tempfile.mkdtemp()
+    repl = PrismREPL.__new__(PrismREPL)
+    repl.working_dir = pathlib.Path(tmp)
+    repl.session = type("S", (), {"model": "sonnet"})()
+    repl._findings_lock = threading.Lock()
+
+    repl._update_profile(
+        "test.py", None,
+        "Conservation Law: A × B = constant\n"
+        "Conservation Law: none found\n"  # should be ignored by seed
+        "Some other text")
+
+    prof_path = pathlib.Path(tmp) / ".deep" / "profile.json"
+    assert prof_path.exists()
+    prof = json.loads(prof_path.read_text(encoding="utf-8"))
+    assert prof["scan_count"] == 1
+    assert "test.py" in prof["files_analyzed"]
+    # Should have extracted at least 1 law
+    assert len(prof.get("conservation_laws", [])) >= 1
+
+    # Second update should increment
+    repl._update_profile("test2.py", None, "More analysis")
+    prof2 = json.loads(prof_path.read_text(encoding="utf-8"))
+    assert prof2["scan_count"] == 2
+
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
+    print("  test_profile_update: PASS")
+
+
 if __name__ == "__main__":
     print("\nRunning prism v0.8 tests...\n")
     test_parse_stage_json()
@@ -1541,4 +2520,29 @@ if __name__ == "__main__":
     test_parse_calibrate_output()
     test_auto_args_setup()
     test_intent_custom_intent_unification()
-    print(f"\nAll 33 tests passed!")
+    # New tests (B12, B4, B10, J10, parse args)
+    test_explain_scan_output()
+    test_explain_scan_large_file_recommends_full()
+    test_record_learning_write_read_cycle()
+    test_save_deep_finding_constraint_history()
+    test_dispute_prism_selection()
+    test_save_gaps_to_kb()
+    test_save_gaps_to_kb_markdown_fenced()
+    test_cmd_kb_list_and_show()
+    test_cmd_kb_no_kb_dir()
+    test_parse_scan_args_explain_dispute_reflect()
+    # New tests (round 40+)
+    test_explain_scan_text_mode()
+    test_cmd_kb_clear()
+    test_record_learning_corrupt_json()
+    test_constraint_history_cap()
+    test_learning_json_cap()
+    test_parse_scan_args_all_modes()
+    test_save_gaps_empty_json()
+    test_split_into_subsystems_python()
+    test_split_into_subsystems_edge_cases()
+    test_extract_questions_from_prereq()
+    test_cross_project_context()
+    test_confidence_gate_feedback()
+    test_profile_update()
+    print(f"\nAll 56 tests passed!")

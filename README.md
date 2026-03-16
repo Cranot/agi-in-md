@@ -4,7 +4,7 @@
 
 Your most expensive model produces shallow analysis because you're asking it to reason *about* problems instead of *through* them. A 332-word prompt fixes this.
 
-A **prism** is a markdown file used as a system prompt. Instead of asking the model to "analyze deeply," it tells the model to do specific things: make a claim, attack it, build an improvement, watch what breaks, derive what can't change. This repo contains 48 prisms + 12 scan modes + the tooling to use them. The newest prisms detect their own knowledge gaps and self-correct confabulated claims.
+A **prism** is a markdown file used as a system prompt. Instead of asking the model to "analyze deeply," it tells the model to do specific things: make a claim, attack it, build an improvement, watch what breaks, derive what can't change. This repo contains 50 prisms + 19 scan modes + the tooling to use them. The newest prisms detect their own knowledge gaps and self-correct confabulated claims.
 
 **Same code. Same question. Different instructions:**
 
@@ -138,10 +138,22 @@ python prism.py
 > /scan auth.py verified                    # full pipeline + re-analysis (4 calls)
 > /scan auth.py scout                       # depth + targeted verify (2 calls)
 
+# ── Preview — see what would run, no API calls ──
+> /scan auth.py explain                       # prisms, models, costs, recommendations
+
 # ── Deep analysis — multiple angles ──
 > /scan auth.py full                        # 9-call: 7 structural + adversarial + synthesis
 > /scan auth.py 3way                        # WHERE/WHEN/WHY — works on any domain
 > /scan auth.py behavioral                  # errors + costs + changes + promises
+
+# ── Dispute + Reflect ──
+> /scan auth.py dispute                     # 2 orthogonal prisms → disagreement synthesis
+> /scan auth.py reflect                     # recurring patterns + unexplored dimensions
+
+# ── Smart + Subsystem + Prereq ──
+> /scan auth.py smart                       # adaptive chain: prereq → AgentsKB → subsystem → dispute
+> /scan auth.py subsystem                   # different prism per class/function
+> /scan "build a connection pool" prereq    # what do I need to know first?
 
 # ── Meta ──
 > /scan auth.py meta                        # analyze what the analysis conceals
@@ -157,6 +169,11 @@ python prism.py
 > /scan auth.py --confidence                # tag claims HIGH/MED/LOW/UNVERIFIED
 > /scan auth.py --provenance                # source attribution per finding
 > /scan auth.py --depth deep                # shallow|standard|deep|exhaustive
+
+# ── Knowledge base ──
+> /kb list                                  # show persistent knowledge base entries
+> /kb auth.py                               # show KB entries for this file
+> /kb clear                                 # clear knowledge base
 
 # ── Works on any input ──
 > /scan "your question" full                # text, not just code
@@ -175,6 +192,10 @@ python prism.py --scan auth.py gaps              # show what to NOT trust
 python prism.py --scan auth.py scout             # depth + targeted verify
 python prism.py --scan auth.py full              # 9-call champion pipeline
 python prism.py --scan auth.py strategist        # plan optimal tool sequence
+python prism.py --scan auth.py dispute           # 2 orthogonal prisms → disagreement synthesis
+python prism.py --scan auth.py subsystem         # per-class/function prism routing
+python prism.py --scan auth.py smart             # adaptive chain: prereq → AgentsKB → analysis → dispute
+python prism.py --scan auth.py --explain         # preview: prisms, models, costs (no API calls)
 python prism.py --solve "problem text"           # cook prism + solve
 echo "problem" | python prism.py --solve --pipe  # read from stdin
 
@@ -183,7 +204,7 @@ python prism.py --scan auth.py --confidence      # tag claims HIGH/MED/LOW
 python prism.py --scan auth.py --provenance      # source attribution per finding
 python prism.py --scan auth.py --depth deep      # shallow|standard|deep|exhaustive
 
-# Other options: -m haiku|sonnet|opus  -o FILE  --json  -q  --models  --validate
+# Other options: -m haiku|sonnet|opus  -o FILE  --json  -q  --models  --validate  --explain
 ```
 
 ### With Claude CLI Directly
@@ -222,6 +243,10 @@ Each prism is a standalone `.md` file — use with `prism.py`, the Claude CLI (`
 | **Full** | `/scan file full` | 7 structural prisms → adversarial attack → synthesis | 9 | ~$0.50 |
 | **3-Way** | `/scan file 3way` | WHERE/WHEN/WHY — 3 auto-generated operations → cross-operation synthesis | 4 | ~$0.25 |
 | **Behavioral** | `/scan file behavioral` | Error cascades + costs + coupling + identity → synthesis | 5 | ~$0.20 |
+| **Dispute** | `/scan file dispute` | 2 orthogonal prisms → disagreement synthesis | 3 | ~$0.15 |
+| **Subsystem** | `/scan file subsystem` | AST split → per-region prisms → cross-subsystem synthesis | N+2 | ~$0.15-0.55 |
+| **Smart** | `/scan file smart` | Adaptive chain: prereq → AgentsKB → analysis → dispute → profile | 5+ | ~$0.30-0.70 |
+| **Prereq** | `/scan file prereq` | Knowledge gaps → atomic questions → batch AgentsKB | 2+ | ~$0.10 |
 
 **Single** — one call, covers most cases. ~2,000 words, ~10 seconds.
 
@@ -230,6 +255,14 @@ Each prism is a standalone `.md` file — use with `prism.py`, the Claude CLI (`
 **3-Way** — generates three custom prompts that attack the problem from orthogonal angles (WHERE: dig through structural layers, WHEN: simulate degradation over time, WHY: prove what three desirable properties can't coexist), then synthesizes. The disagreements between the three make the synthesis self-correcting. ~9,000 words, ~2 min. Works on any domain — code, text, strategy.
 
 **Behavioral** — focuses on runtime behavior: how errors cascade, where costs hide, what breaks when you change things. ~8,000 words, ~2 min.
+
+**Dispute** — runs 2 orthogonal prisms (l12 + identity for code, l12_universal + claim for text), then synthesizes where they disagree. Much of Full's self-correction at a fraction of the cost. ~5,000 words, ~1 min.
+
+**Subsystem** — splits code into classes/functions via AST, assigns different prisms to different regions (identity on the class that lies, optimize on the hot path, error_resilience on error handlers), then synthesizes cross-subsystem findings. The highest-coverage single-file mode.
+
+**Smart** — the system decides the pipeline. Runs prerequisites first (what do I need to know?), fills gaps from AgentsKB, then analyzes with subsystem routing, self-corrects via dispute, and saves a persistent codebase profile. Each scan makes future scans smarter.
+
+**Prereq** — identifies knowledge prerequisites for a task, converts them to atomic questions, batch-queries AgentsKB. Shows what you know vs what you need to research.
 
 Use `-m haiku` for ~5x cheaper — same depth, occasionally needs a retry.
 
@@ -277,6 +310,12 @@ The best prism per use-case. All auto-selected by `prism.py` — you just pick t
 | Stratigraphic analysis of custom goal | `/scan file target="goal" cooker=archaeology` |
 | Check docs match code | `/prism fidelity` |
 | Audit feature wiring | `/prism audit_code` |
+| Lightweight disagreement committee | `/scan file dispute` — 2 orthogonal prisms + synthesis, ~$0.15 |
+| Recurring patterns + unexplored dimensions | `/scan file reflect` — cross-refs constraint history + learning memory |
+| Show what would run without calling any model | `/scan file explain` or `--explain` — prisms, models, costs, recommendations |
+| Different prism per class/function | `/scan file subsystem` — AST split, per-region prisms, cross-subsystem synthesis |
+| Maximum intelligence, self-improving | `/scan file smart` — adaptive chain: prereq → AgentsKB → analysis → dispute → profile |
+| What do I need to know before this task? | `/scan "task description" prereq` — knowledge gaps → atomic questions → AgentsKB answers |
 | Multiple angles at once | Run 3-5 prisms in parallel (see CLI examples above) |
 | Generate code | `/prism codegen` |
 | Rewrite text/docs | `/prism writer` → `/prism writer_critique` → `/prism writer_synthesis` |
@@ -438,8 +477,8 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 ## Project Structure
 
 ```
-prism.py              Interactive REPL + CLI tool (~11,200 lines)
-prisms/               48 prisms: 11 champions + gap detection + oracle + strategist + variants
+prism.py              Interactive REPL + CLI tool (~13,500 lines)
+prisms/               50 prisms: 11 champions + gap detection + oracle + strategist + prereq + verify_claims + variants
 prompts/              80+ research prisms (L4-L13) + paper prompts + gap extraction
 research/             Experiment scripts, benchmarks, 30 literature reviews
 output/               1,000+ raw experiment outputs
@@ -460,20 +499,12 @@ experiment_log.md     Research log (Rounds 1-41)
 
 ## What's Next
 
-**Validation:**
-- **Human evaluation of output quality** — blind scoring of prism vs vanilla outputs by developers who didn't write the tool. Planned protocol: 3-5 human raters, 5 flagship prisms, 3 real codebases, randomized presentation, rubric distinguishing structural insight from factual accuracy. This is the biggest credibility gap.
-
-**Architecture (highest leverage, designs ready):**
-- **Subsystem routing** — map a file into classes/functions/state boundaries, rank hotspots, run different prisms on different regions, synthesize. Currently the single biggest quality upgrade available.
-- **Evidence ledger** — every finding becomes a structured object with claim type, source span, confidence, provenance, and falsification criteria. Enables "which findings depend on this ASSUMED claim?"
+- **Human evaluation of output quality** — blind scoring of prism vs vanilla outputs by developers who didn't write the tool. The biggest credibility gap.
+- **Evidence ledger** — every finding becomes a structured object with claim type, source span, confidence, provenance, and falsification criteria.
 - **Repository graph awareness** — import graph, call graph, cross-file synthesis. "This function is where the bug appears, but these three other files encode the conservation law causing it."
-- **Learning memory** — per-repo store of false positives, accepted fixes, rejected recommendations, style constraints. The agent stops repeating the same class of mistake.
-
-**Features:**
-- **Disagreement committee** — lightweight 2-prism mode that surfaces where orthogonal prisms disagree. Much of Full's self-correction at a fraction of the cost.
-- **Patch restraint** — propose minimal fix, predict second-order breakage, list preserved invariants, optionally generate tests. Safe change under structural constraints.
-- AgentsKB integration for automatic gap filling
 - GPT-4o, Llama testing (Gemini 2.5 Flash + Hermes 3 confirmed working)
+
+**Recently shipped (Mar 16):** smart chain engine (`/scan file smart`), subsystem routing, knowledge prerequisites + AgentsKB integration, codebase profiles, dispute mode, learning memory, reflect mode, patch impact prediction, `/kb` command, `/brainstorm`, `--explain`. Cross-project law injection tested and disabled (anchoring effect — model copies provided laws instead of discovering its own).
 
 Want to help? Test on other models, run `--trust` on your code and report what it finds, open PRs with results. **Especially welcome: independent human evaluation of outputs in `output/`.**
 

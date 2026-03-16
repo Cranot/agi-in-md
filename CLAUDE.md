@@ -174,6 +174,12 @@ Q5: Does the user want to fix issues?
 | Explore a domain | `discover` → `expand N` | Brainstorm angles first, then cook + run |
 | Autonomous optimization | `optimize="goal"` | Discover → select → analyze → fix → loop |
 | Show model routing | `python prism.py --models` | Displays MODEL_MAP, COOK_MODEL, per-prism optimal models |
+| Preview what would run | `/scan file explain` or `--explain` | Shows prisms, models, estimated costs, recommendations. No API calls. |
+| Disagreement analysis | `/scan file dispute` | 2 orthogonal prisms → disagreement synthesis. 3 calls, ~$0.15 |
+| Recurring pattern analysis | `/scan file reflect` | L12 → claim → cross-ref constraint history + learning memory → constraint synthesis |
+| Different prism per class/function | `/scan file subsystem` | AST split → calibrate → per-region prism → cross-subsystem synthesis |
+| Maximum intelligence (adaptive) | `/scan file smart` | prereq → AgentsKB fill → subsystem/L12 → dispute → profile. Self-improving. |
+| What to know before a task | `/scan "task" prereq` | Knowledge gaps → atomic questions → batch AgentsKB answers |
 
 ### Model Selection Strategy — Four Routing Paths
 
@@ -224,11 +230,11 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 
 | File | Purpose |
 |------|---------|
-| `prism.py` | Prism — structural analysis through cognitive prisms, any domain (main tool) |
+| `prism.py` | Prism — structural analysis through cognitive prisms, any domain (main tool, ~13,500 lines) |
 | `deep.sh` | CLI prism analysis tool (standalone) |
-| `test_plan_pipeline.py` | Tests for prism.py (33 tests) |
+| `test_plan_pipeline.py` | Tests for prism.py (56 tests) |
 | **Prisms** | |
-| `prisms/` | 48 prism files on disk — see README and PRISMS.md for full catalog. |
+| `prisms/` | 50 prism files on disk — see README and PRISMS.md for full catalog. |
 | `prisms/l12.md` | L12 meta-conservation pipeline — default for `/scan` on code (332w) |
 | `prisms/l12_universal.md` | L12 compressed to 73w — Sonnet-only universal (code + reasoning), always single-shot |
 | `prisms/deep_scan.md` | SDL-1: Structural Deep-Scan Lens — conservation law + info laundering + 3 bug patterns (180w) |
@@ -343,7 +349,7 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 - **Taxonomy is a tree above L8 (P183)**: Simulation branch produces different L9 meta-law (Predictive Certainty × Temporal Distance) than construction's L9. Diamond topology holds.
 - **Sonnet lifts all operations +0.7 avg depth** (P180). Simulation/Miniaturize/Transplant benefit most (hypothetical reasoning).
 - **DIAMOND CONVERGENCE CONFIRMED (P184-P188)**: Two full L9→L12 chains (simulation + archaeology) BOTH converge at L12 on the same structural impossibility as construction: "the method instantiates what it diagnoses." Three vocabularies (observer-constitutive / observer effect / performative contradiction), one fixed point. Conservation laws diverge at every level EXCEPT L12. Terminal behavior converges to fixed point regardless of starting operation. The taxonomy is operation-independent at the reflexive ceiling.
-- **48 prism files on disk** (production + pipeline-internal + variants), all scored, all with optimal model routing.
+- **50 prism files on disk** (production + pipeline-internal + variants), all scored, all with optimal model routing.
 - **3-cooker pipeline (P195-P197)**: COOK_ARCHAEOLOGY(WHERE) + COOK_SIMULATION(WHEN) + COOK_UNIVERSAL(WHY) → synthesis. 4 calls, 9.5 depth. Cross-operation synthesis is inherently adversarial (no dedicated adversarial pass needed). Works on ANY domain — cookers customize to intent. Solves "non-code Full Prism" question.
 - **COOK_3WAY template** (`research/cook_3way.md`): Single cook step that generates all 4 prompts (3 operations + synthesis) for the 3-cooker pipeline. Combines COOK_ARCH + COOK_SIM + COOK_L12 + synthesis prompt into one.
 - **Operation-specific cookers** (`research/cook_simulation.md`, `research/cook_archaeology.md`): Preserve operation type through explicit negative instructions ("No trilemmas, no impossibility proofs"). Validated on security intent.

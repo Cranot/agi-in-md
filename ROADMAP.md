@@ -58,11 +58,8 @@ All skills produce correct structure (generated lens, findings, constraint foote
 - [x] CLAUDE.md Capabilities Map: added meta mode, cooker= syntax, --models command
 - [x] Model routing note: --models, ~/.prism/models.json, YAML frontmatter auto-route
 
-### A2. Commit Round 40 + Hermes changes
-- Massive uncommitted changes across both repos
-- **Decision**: single commit or clean splits?
-- **Blocked by**: Hermes submission finalization
-- **Effort**: 15 min
+### A2. Commit Round 40 + Hermes changes — DONE
+- Committed as `49befb5` (Mar 16)
 
 ### A3. Score unscored Round 40 outputs
 - 14 outputs need depth scoring (R4, R1, P2, codegen)
@@ -90,22 +87,11 @@ All skills produce correct structure (generated lens, findings, constraint foote
 - Design: `research/benchmark_design.md` (complete). Effort: 8-12 hours.
 - **Extended by F2**: model comparison mode (`--compare-models`). Combined B3+F2 effort: 10-14 hours.
 
-### B4. Learning memory — constraint history + feedback loop
-- **Phase 1 (30 min)**: Auto-constraint report appended to output. Zero API calls — template footer listing what was found, what was sacrificed, what dimensions remain unexplored.
-- **Phase 2 (1-2 hours)**: Persist to `.deep/constraint_history.md`. Next `/scan` reads it, injects as preamble. Proven in Hermes: scan1 1047w → reflect → scan2 1257w with DIFFERENT lens targeting unexplored dimensions.
-- **Phase 3 (2-3 hours)**: Full learning memory. Store per-repo: false positives ("this is intentional design, not a bug"), accepted fixes, rejected recommendations, known style constraints. Agent stops repeating the same class of mistake. Schema:
-  ```json
-  {
-    "false_positives": [{"claim": "...", "reason": "intentional design", "file": "...", "date": "..."}],
-    "accepted_fixes": [{"issue": "...", "fix": "...", "file": "...", "date": "..."}],
-    "rejected_advice": [{"recommendation": "...", "reason": "...", "date": "..."}],
-    "style_constraints": ["no global state", "prefer composition over inheritance"]
-  }
-  ```
-- **Phase 4 (1 hour)**: Feed learning memory into cooker. When cooking a prism for a codebase with history, the cooker sees "these 5 recommendations were rejected because of X" and avoids that class of finding.
+### B4. Learning memory — constraint history + feedback loop — DONE (Mar 16)
+DONE (Mar 16): All 4 phases implemented. Constraint history to .deep/constraint_history.md, learning events to .deep/learning.json, injected on subsequent scans, wired into heal approval flow.
 
-### B5. `/scan file reflect` mode in prism.py
-- L12 → claim → constraint summary. Effort: 1-2 hours.
+### B5. `/scan file reflect` mode in prism.py — DONE (Mar 16)
+DONE (Mar 16): 3-phase pipeline (L12 → claim → constraint synthesis with history + learning memory).
 
 ### B6. Adaptive cooker / EvoPrism
 - Bounded mutation space. Effort: 6-8 hours. Priority: MEDIUM.
@@ -142,26 +128,11 @@ All skills produce correct structure (generated lens, findings, constraint foote
 - **Implementation**: Add `--json-findings` flag. Each pipeline step emits structured findings. Synthesis receives typed objects, not raw text. Enables: "which findings depend on this ASSUMED claim?" and "show me everything that changed between scan 1 and scan 2."
 - **Effort**: 4-6 hours. **Priority**: HIGH — prerequisite for reliable gap-fill (J7) and learning memory (B4 Phase 3).
 
-### B9. Patch mode with restraint (`/scan file fix safe`)
-- **What**: Current `/fix auto` extracts bugs and applies patches. Enhanced version: propose the smallest patch → predict second-order breakage → list preserved invariants → optionally generate tests. "Safe change under structural constraints" as a first-class mode.
-- **Why**: The repo's core strength is finding structural trade-offs. Applying fixes without acknowledging those trade-offs undermines the insight. A fix that breaks a conservation law is worse than no fix.
-- **Implementation**:
-  1. Extract issues (existing `_extract_issues()`)
-  2. For each fixable issue: generate minimal patch + impact prediction
-  3. Show: "Fix A (3 lines changed). Predicted impact: touches state mutation path. Preserves: cookie isolation invariant. Risk: MEDIUM — may affect session cleanup."
-  4. User approves/rejects per-fix. Rejected fixes feed into learning memory (B4).
-  5. Optionally: generate regression test for the fix.
-- **Effort**: 3-4 hours. **Priority**: MEDIUM.
+### B9. Patch mode with restraint — DONE (Mar 16)
+DONE (Mar 16): Impact prediction before fix approval. Predicts affected functions, edge cases, invariants, risk level. Skipped in auto mode.
 
-### B10. Disagreement committee (`/scan file dispute`)
-- **What**: Lightweight 2-prism mode. Pick two orthogonal prisms for the artifact, run both, compare ONLY where they disagree, synthesize. Much of full's self-correction benefit at 3 calls instead of 9.
-- **Why**: Full pipeline (9 calls, ~$0.50) is expensive. 3-way (4 calls, ~$0.25) still costs. A 3-call dispute mode (~$0.15) that surfaces the most interesting disagreements is the sweet spot for iterative use.
-- **Implementation**:
-  1. Auto-select 2 orthogonal prisms (e.g., identity + optimize, or error_resilience + api_surface) based on calibration or heuristic.
-  2. Run both in parallel.
-  3. Synthesis prompt: "Prism A found X. Prism B found Y. Where do they disagree? What does each one miss that the other sees? What would a third prism need to resolve?"
-- **Prism selection heuristic**: maximize pairwise uniqueness score from definitive grid (lowest: deep_scan/fix_cascade at 8/10, highest: l12/optimize at 10/10).
-- **Effort**: 2-3 hours. **Priority**: MEDIUM.
+### B10. Disagreement committee (`/scan file dispute`) — DONE (Mar 16)
+DONE (Mar 16): /scan file dispute. l12+identity for code, l12_universal+claim for text, DISPUTE_SYNTHESIS_PROMPT for disagreement synthesis. 3 calls.
 
 ### B11. Repository graph awareness
 - **What**: Dependency-aware targeting. Parse import graph, call graph, config edges. When analyzing file A, understand that files B and C encode the constraints causing A's problems.
@@ -173,17 +144,14 @@ All skills produce correct structure (generated lens, findings, constraint foote
   - **Phase 4 (future)**: Call graph analysis. "This function is where the bug appears, but these three callers encode the conservation law causing it."
 - **Effort**: Phase 1-2: 5 hours. Phase 3: 4 hours. **Priority**: HIGH — unlocks "real codebase" credibility.
 
-### B12. Operation selector that explains itself
-- **What**: Surface the strategist's reasoning as a visible planner. Before running analysis, show: "I chose identity + optimize because this file has API promises, hidden costs, and mutable state."
-- **Why**: Strategist prism already does this (2-call meta-agent: plan + adversarial critique). But users must explicitly invoke `/scan file strategist`. The explanation should be available as an optional prefix to any scan mode.
-- **Implementation**: `--explain` flag. Runs a lightweight calibration (existing `--calibrate`) and prepends: "Selected mode: X. Reason: Y. Alternative: Z." to the output. Zero extra API calls if calibration is cached.
-- **Effort**: 1-2 hours. **Priority**: LOW — nice UX, not a capability gap.
+### B12. Operation selector that explains itself — DONE (Mar 16)
+DONE (Mar 16): /scan file explain and --explain CLI flag. Shows all scan modes with prisms, models, costs, recommendations. Zero API calls.
 
 ### Other unimplemented prism.py features
-- `/brainstorm` alias → routes to 3-way on text
-- `--cooker` CLI flag (interactive cooker= works, CLI doesn't)
+- ~~`/brainstorm` alias~~ DONE (Mar 16) — routes to `/scan <text> 3way`
+- ~~`--cooker` CLI flag~~ DONE (Mar 16) — wired into scan_arg as `cooker=`
 - MCP server / REST API / Python library for external agents
-- `reflect` mode in prism.py (only exists as Super Hermes skill — proven to work, should be ported)
+- ~~`reflect` mode~~ DONE (Mar 16) — `/scan file reflect`
 
 ---
 
@@ -618,10 +586,8 @@ Haiku extracts structured JSON from boundary+audit outputs. Tested on Starlette:
 - Line numbers → confidence 0.5, fill CHANGELOG
 - Prompt: `prompts/gap_extract.md`
 
-#### J7. AgentsKB fill integration (prototype, ~$0.50)
-Take J6's gap list. For each API_DOCS gap, query AgentsKB MCP server.
-Compare: does AgentsKB answer confirm or refute the L12 claim?
-This proves the Prism→AgentsKB pipeline end-to-end.
+#### J7. AgentsKB fill integration — DONE (Mar 16)
+DONE (Mar 16): `_fill_gaps_agentskb()` queries agentskb.com REST API for KNOWLEDGE gaps. Fills up to 5 gaps per run. Wired into `verified` pipeline between gap extraction and re-analysis. Filled facts injected as `VERIFIED FACTS (from AgentsKB)` tag. Graceful degradation when API is down.
 
 #### J8. Augmented re-analysis — DONE (Mar 15, VPS)
 Injected 4 verified facts into L12 input. Re-ran on Starlette. **Result: BOTH confabulated errors eliminated.**
@@ -675,22 +641,11 @@ Original L12 (1,119w, 2 errors) → boundary+audit (2,251w) → extraction (10 g
 
 **Alternative**: 4 Haiku calls at ~$0.05 — works but misses nuance, fewer gaps found. Use when cost matters more than coverage.
 
-#### J9. Production pipeline mode (`/scan file verified`)
-If J5-J8 validate: implement as a new mode in prism.py:
-```
-/scan file verified    →  L12 + boundary + audit + fill + re-run
-/scan file gaps        →  boundary + audit only (show what to not trust)
-```
-This becomes the highest-accuracy analysis mode.
+#### J9. Production pipeline mode (`/scan file verified`) — DONE
+Both `/scan file verified` and `/scan file gaps` modes implemented and working in prism.py.
 
-#### J10. Persistent gap KB (`.deep/knowledge/`)
-After each verified analysis, save confirmed facts:
-```json
-{"file": "routing.py", "fact": "asyncio.RWLock does not exist",
- "source": "python docs", "verified": "2026-03-15"}
-```
-Next analysis of same file starts with known facts → skips re-verification.
-Knowledge accumulates across sessions. The system gets smarter over time.
+#### J10. Persistent gap KB (`.deep/knowledge/`) — DONE (Mar 16)
+DONE (Mar 16): Shared _save_gaps_to_kb() helper with deduplication. /kb command (list/show/clear). Gaps pipeline now saves to KB.
 
 #### J11. Write the research paper / blog post
 - Title: "What Your AI Analysis Doesn't Know: Detecting and Filling Knowledge Gaps in LLM Code Analysis"
@@ -745,7 +700,7 @@ J5 (cross-target) ──→ J6 (extraction) ──→ J7 (AgentsKB fill) ──�
 
 | # | What | Priority |
 |---|------|----------|
-| E1 | Test coverage expansion (33 tests for 10K lines) | MEDIUM |
+| E1 | Test coverage expansion (56 tests for 13.5K lines — improved Mar 16, was 33/10K) | MEDIUM |
 | E2 | Architectural improvements (command registry, templates from disk) | LOW |
 | E3 | ~~Fix VPS test battery quoting bug~~ DONE (Mar 15): `$(cat "$target")` → stdin pipe | LOW |
 
@@ -799,6 +754,18 @@ J5 (cross-target) ──→ J6 (extraction) ──→ J7 (AgentsKB fill) ──�
 - GitHub profile rewrite via 5-way Prism analysis (commit 8beb708, live)
 - ROADMAP Section F added: Model Routing & Future-Proofing (5 items)
 - F1 model gap test battery launched on VPS (results pending)
+
+### Mar 16 Session (massive)
+**16 features, 56 tests, VPS A/B validated, AgentsKB production fixed.**
+- Epistemic honesty pass: accuracy data (97%/42%), softened claims, D1 human eval protocol
+- 16 features: explain, learning memory, dispute, reflect, patch impact, KB mgmt, AgentsKB fill, prereq prism, subsystem routing, smart chain, codebase profile, cross-project transfer, seed queue, /brainstorm, --cooker, --pipe
+- 23 new tests (33→56). VPS A/B: L12=668w, subsystem=4179w (zero overlap), smart=14634w (cross-subsystem trust violations)
+- AgentsKB production API fixed: synced 5 files, inf/nan JSON serialization, SafeJSONResponse
+- Confidence gate on feedback loop prevents 42%-accuracy findings from poisoning future scans
+- Profile regex extraction hardened (rejects labels, questions, partial sentences — requires formula notation)
+- Smart prereq framing fixed (code gets "analyze this code" not raw source as "task")
+- 9 bug fixes, 3 prompt improvements, growth caps (200/500/500), DRY refactor (shared question extractor)
+- Docs: README (19 modes, ~13,500 lines, 50 prisms), CLAUDE.md, PRISMS.md, ROADMAP all updated
 
 ---
 
@@ -1431,10 +1398,10 @@ Where: op = cognitive operation, R = prompt length (rate), W = model capacity, K
 | Category | Open | Priority |
 |----------|------|----------|
 | **Hermes submission** (H) | SHIPPED | DONE |
-| **Prism immediate** (A) | 2 items (A2 commit, A3 scoring) | MEDIUM |
-| **Prism implementations** (B) | 10+4 features (B7 done, B2/B8/B11 HIGH) | MEDIUM-HIGH — B2 subsystem + B8 evidence ledger + B11 repo graph = highest leverage |
+| **Prism immediate** (A) | 1 item (A3 scoring; A2 done) | LOW |
+| **Prism implementations** (B) | 10+4 features (B4/B5/B7/B9/B10/B12 done, B2/B8/B11 HIGH) | MEDIUM-HIGH — B2 subsystem + B8 evidence ledger + B11 repo graph = highest leverage |
 | **Model routing** (F) | 3 items (F1 done+scored, F4 done) | MEDIUM — F2/F3 for new models |
-| **Knowledge gap detection** (J) | 3 open: J7, J10, J11 (J1-J6, J8-J9 done) | **HIGHEST** |
+| **Knowledge gap detection** (J) | 1 open: J11 (J1-J10 all done) | HIGH |
 | **VPS experiments** (C) | 4 | LOW-MEDIUM |
 | **Research questions** (D) | 3 | LOW |
 | **Code quality** (E) | 2 (E3 done) | LOW |
@@ -1444,7 +1411,7 @@ Where: op = cognitive operation, R = prompt length (rate), W = model capacity, K
 | **Session tasks** (L) | 7 open (15 done) | L5 MEDIUM, rest LOW |
 | **Myths/gaps** (M) | 19 items | M16 HIGH (score inversion), rest MEDIUM |
 | **VPS test plan** (N) | 17 tests designed: 7 Tier 1, 6 Tier 2, 4 Tier 3 | Tier 1 = paper-critical |
-| **TOTAL OPEN** | **~50** | |
+| **TOTAL OPEN** | **~35** | |
 
 ### P. PRACTICAL TRANSLATION: Theory → Prism CLI Features
 
@@ -1925,7 +1892,7 @@ Total: 2 calls, ~$0.052. Gets Oracle's trust level with more depth in Phase 1.
 ### T. EXTERNAL REVIEW NOTES (Mar 15)
 
 **Key feedback:**
-1. **Tool proliferation** — 48 prisms, 12 modes, 7 flags. Users need binary choice: `scan` (depth) vs `scan --trust` (verifiability). Abstract complexity away.
+1. **Tool proliferation** — 50 prisms, 19 modes, 7 flags. Users need binary choice: `scan` (depth) vs `scan --trust` (verifiability). Abstract complexity away.
 2. **Academic overclaiming** — "Conservation Law" without formal proof = Reviewer 2 rejects. Use "Observed Constraint" in paper.
 3. **Human eval (M7)** — single biggest blocker for paper.
 

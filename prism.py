@@ -197,6 +197,8 @@ OPTIMAL_PRISM_MODEL = {
     "knowledge_typed": "sonnet",       # Knowledge<T> typed claims + provenance
     "l12g": "sonnet",                  # gap-aware L12: single-pass self-correcting
     "oracle": "sonnet",                # 5-phase: depth+typing+correction+reflection+harvest
+    "prereq": "sonnet",               # knowledge prerequisites: atomic questions for AgentsKB
+    "verify_claims": "sonnet",         # extract testable claims, generate verification commands
 }
 
 # Static Full Pipeline: 9-step champion pipeline for code analysis.
@@ -223,26 +225,30 @@ STATIC_CODE_PIPELINE = [
 DISPUTE_SYNTHESIS_PROMPT = (
     "You receive two independent structural analyses of the same code, "
     "produced by different analytical lenses.\n\n"
-    "Your task: identify ONLY the points where they DISAGREE or see "
-    "different things.\n\n"
+    "Execute every step. Output the complete analysis.\n\n"
+    "## DISAGREEMENTS\n"
+    "Identify ONLY where the two analyses DISAGREE or see different things. "
+    "Do NOT list agreements. Do NOT summarize.\n"
     "For each disagreement:\n"
-    "1. State what Lens A found\n"
-    "2. State what Lens B found\n"
-    "3. Explain why they diverge (different assumptions, different scope, "
-    "genuine contradiction)\n"
-    "4. Judge which is more likely correct, with reasoning\n"
-    "5. Name what NEITHER lens saw — the blind spot their disagreement "
-    "reveals\n\n"
-    "Do NOT list agreements. Do NOT summarize each analysis. "
-    "Focus exclusively on divergence and the structural reasons for it.\n\n"
-    "End with: the single most important insight that only emerges from "
-    "comparing these two analyses."
+    "1. What Lens A found\n"
+    "2. What Lens B found\n"
+    "3. Why they diverge (assumptions, scope, genuine contradiction)\n"
+    "4. Which is more likely correct, with evidence from source code\n\n"
+    "## BLIND SPOTS\n"
+    "For each disagreement, name what NEITHER lens saw — the structural "
+    "property their divergence reveals but both missed.\n\n"
+    "## CONVERGENCE\n"
+    "What do both analyses agree on WITHOUT stating it? Name the implicit "
+    "shared assumption. Then: is that assumption correct?\n\n"
+    "## DEEPEST FINDING\n"
+    "The single insight that becomes visible ONLY from comparing these "
+    "two analyses. Neither alone could find it. Name it precisely."
 )
 
 # B9: Impact prediction before applying patches
 IMPACT_PREDICT_PROMPT = (
-    "You are reviewing a proposed code fix. Given the original code and "
-    "the proposed change:\n\n"
+    "You are reviewing a proposed code fix. Execute every step.\n\n"
+    "Given the original code and the proposed change:\n\n"
     "1. List every function/method that calls or is called by the changed code\n"
     "2. Identify edge cases that might break after this change\n"
     "3. List invariants this code preserves — will the fix break any?\n"
@@ -250,6 +256,46 @@ IMPACT_PREDICT_PROMPT = (
     "state) / HIGH (affects control flow or public API)\n"
     "5. Suggest one test that would catch a regression from this fix\n\n"
     "Be specific. Reference actual function names and code paths."
+)
+
+# B2: Subsystem routing — calibration and synthesis prompts
+CALIBRATE_SUBSYSTEM_PROMPT = (
+    "You are assigning analytical prisms to code subsystems. "
+    "Each prism reveals different structural properties. "
+    "Assign the BEST prism for each subsystem — maximize "
+    "diversity (avoid the same prism twice unless structurally "
+    "identical).\n\n"
+    "AVAILABLE PRISMS:\n{prism_catalog}\n\n"
+    "SUBSYSTEMS:\n{subsystem_summaries}\n\n"
+    "Output JSON only:\n"
+    '```json\n'
+    '{{"assignments": [{{"subsystem": "name", '
+    '"prism": "prism_name", "rationale": "5 words"}}]}}\n'
+    '```'
+)
+
+SUBSYSTEM_SYNTHESIS_PROMPT = (
+    "Execute every step. Output the complete analysis.\n\n"
+    "You received {n} structural analyses, each examining a "
+    "different subsystem of the same file through a different "
+    "analytical prism.\n\n"
+    "{subsystem_outputs}\n\n"
+    "## CROSS-SUBSYSTEM FINDINGS\n"
+    "What structural properties span MULTIPLE subsystems? "
+    "Name coupling patterns, shared assumptions, dependency "
+    "chains that no single-subsystem analysis could find.\n\n"
+    "## CROSS-SUBSYSTEM BUGS\n"
+    "What bugs exist BETWEEN subsystems? (ClassA assumes X, "
+    "ClassB violates X.) Invisible to single-subsystem "
+    "analysis.\n\n"
+    "## FILE-LEVEL CONSERVATION LAW\n"
+    "Each subsystem analysis found local properties. What is "
+    "the conservation law of the WHOLE file that governs how "
+    "these subsystems relate? Name it: A x B = constant.\n\n"
+    "## COVERAGE MAP\n"
+    "For each subsystem: what the assigned prism found, and "
+    "what a DIFFERENT prism would have found. Identify the "
+    "biggest remaining blind spot."
 )
 
 # FALLBACK PROMPT METADATA: Tuned for claude-sonnet-4-6, claude-haiku-4-5-20251001
@@ -1236,6 +1282,139 @@ def _resolve_claude_cmd():
     return "claude"
 
 CLAUDE_CMD = _resolve_claude_cmd()
+
+
+def _split_into_subsystems(content, filename=""):
+    """B2: Split source code into structural subsystems via AST.
+
+    Returns list of {name, start_line, end_line, kind, content}.
+    Python: uses ast.parse. Other langs: regex heuristic.
+    Min 10 lines per subsystem, max 8 subsystems.
+    """
+    import ast as _ast_split
+
+    lines = content.split("\n")
+    total_lines = len(lines)
+
+    if total_lines < 30:
+        return [{"name": filename or "main",
+                 "start_line": 1, "end_line": total_lines,
+                 "kind": "file", "content": content}]
+
+    subsystems = []
+
+    # Try Python AST parsing
+    is_python = (filename.endswith(".py")
+                 or not filename
+                 or "def " in content[:500])
+    if is_python:
+        try:
+            tree = _ast_split.parse(content)
+            for node in _ast_split.iter_child_nodes(tree):
+                if isinstance(node, _ast_split.ClassDef):
+                    start = node.lineno
+                    end = node.end_lineno or start
+                    subsystems.append({
+                        "name": node.name,
+                        "start_line": start,
+                        "end_line": end,
+                        "kind": "class",
+                        "content": "\n".join(
+                            lines[start - 1:end]),
+                    })
+                elif isinstance(node, (
+                        _ast_split.FunctionDef,
+                        _ast_split.AsyncFunctionDef)):
+                    start = node.lineno
+                    end = node.end_lineno or start
+                    subsystems.append({
+                        "name": node.name,
+                        "start_line": start,
+                        "end_line": end,
+                        "kind": "function",
+                        "content": "\n".join(
+                            lines[start - 1:end]),
+                    })
+        except SyntaxError:
+            subsystems = []  # Fall through to regex
+
+    # Regex fallback for non-Python or parse failure
+    if not subsystems:
+        import re as _re_split
+        pattern = _re_split.compile(
+            r'^(?:export\s+)?(?:class|def|function|func|fn|'
+            r'pub\s+fn|async\s+def|export\s+default\s+'
+            r'(?:class|function))\s+(\w+)',
+            _re_split.MULTILINE)
+        matches = list(pattern.finditer(content))
+        if matches:
+            for i, m in enumerate(matches):
+                start = content[:m.start()].count("\n") + 1
+                if i + 1 < len(matches):
+                    end = content[:matches[i + 1].start()].count(
+                        "\n")
+                else:
+                    end = total_lines
+                subsystems.append({
+                    "name": m.group(1),
+                    "start_line": start,
+                    "end_line": end,
+                    "kind": "definition",
+                    "content": "\n".join(
+                        lines[start - 1:end]),
+                })
+
+    # If still nothing, chunk into ~100-line blocks
+    if not subsystems:
+        chunk_size = min(100, max(30, total_lines // 4))
+        for i in range(0, total_lines, chunk_size):
+            end = min(i + chunk_size, total_lines)
+            subsystems.append({
+                "name": f"block_{i // chunk_size + 1}",
+                "start_line": i + 1,
+                "end_line": end,
+                "kind": "chunk",
+                "content": "\n".join(lines[i:end]),
+            })
+
+    # Filter: min 10 lines
+    subsystems = [s for s in subsystems
+                  if s["end_line"] - s["start_line"] + 1 >= 10]
+
+    if not subsystems:
+        return [{"name": filename or "main",
+                 "start_line": 1, "end_line": total_lines,
+                 "kind": "file", "content": content}]
+
+    # Cap at 8: merge smallest pairs
+    while len(subsystems) > 8:
+        # Find smallest subsystem
+        smallest_idx = min(
+            range(len(subsystems)),
+            key=lambda i: (subsystems[i]["end_line"]
+                           - subsystems[i]["start_line"]))
+        # Merge with nearest neighbor
+        if smallest_idx > 0:
+            merge_idx = smallest_idx - 1
+        else:
+            merge_idx = 1 if len(subsystems) > 1 else 0
+        if merge_idx != smallest_idx:
+            a, b = sorted([smallest_idx, merge_idx])
+            merged = {
+                "name": (f"{subsystems[a]['name']}+"
+                         f"{subsystems[b]['name']}"),
+                "start_line": subsystems[a]["start_line"],
+                "end_line": subsystems[b]["end_line"],
+                "kind": "merged",
+                "content": (subsystems[a]["content"] + "\n"
+                            + subsystems[b]["content"]),
+            }
+            subsystems[a] = merged
+            del subsystems[b]
+        else:
+            break
+
+    return subsystems
 
 
 def _cleanup_skills_cache():
@@ -2464,6 +2643,7 @@ class PrismREPL:
             "/reload":    {"handler": self._cmd_reload_cmd, "help": "Hot-reload prism.py + prisms without restarting",   "args": "",                                              "category": "session"},
             "/force-confirm": {"handler": self._cmd_force_confirm, "help": "Toggle: prompt before auto-reading files even in chat mode", "args": "",                              "category": "session"},
             "/kb":        {"handler": self._cmd_kb,          "help": "Knowledge base: list verified facts, clear, show entries for a file", "args": "[list|clear|<file>]",                          "category": "info"},
+            "/brainstorm": {"handler": self._cmd_brainstorm, "help": "3-way analysis on text (alias for /scan <text> 3way)",                       "args": "<text|file>",                                   "category": "analysis"},
         }
         self._commands.update(cmds)
 
@@ -2547,6 +2727,14 @@ class PrismREPL:
             verified = "verified" if e.get("verified") else "unverified"
             print(f"  {i}. [{conf}] {claim}")
             print(f"     {C.DIM}{src} — {verified}{C.RESET}")
+
+    def _cmd_brainstorm(self, arg):
+        """/brainstorm <text|file> — alias for /scan <input> 3way."""
+        if not arg or not arg.strip():
+            print(f"{C.YELLOW}Usage: /brainstorm <text or file>"
+                  f"{C.RESET}")
+            return
+        self._cmd_scan(f"{arg.strip()} 3way")
 
     def _cmd_help(self, arg):
         """Show help text. /help full for all examples."""
@@ -2734,6 +2922,9 @@ class PrismREPL:
                 print(f"  {C.DIM}  /expand 1,3 single                  cook prism per area, run{C.RESET}")
                 print(f"  {C.DIM}  /scan auth.py 3way                  WHERE/WHEN/WHY pipeline (any domain){C.RESET}")
                 print(f"  {C.DIM}  /scan auth.py meta                  recursive self-analysis (what analysis conceals){C.RESET}")
+                print(f"  {C.DIM}  /scan auth.py smart                 adaptive chain (prereq → AgentsKB → analysis → dispute){C.RESET}")
+                print(f"  {C.DIM}  /scan auth.py dispute               2 prisms → disagreement synthesis (~$0.15){C.RESET}")
+                print(f"  {C.DIM}  /scan auth.py explain               show what would run (no API calls){C.RESET}")
                 print(f"  {C.DIM}  /scan auth.py dxf                   discover + expand all as full prism{C.RESET}")
                 print(f"  {C.DIM}  /scan auth.py nuclear               Opus + full discover + full expand{C.RESET}")
                 print(f'  {C.DIM}  /scan auth.py optimize="security"   cooked strategy + convergence loop{C.RESET}')
@@ -2768,6 +2959,18 @@ class PrismREPL:
                     print(f"  {C.DIM}  /scan auth.py nuclear              ☢️  Opus + dfxf — the cooker decides scope{C.RESET}")
                     print(f"  {C.DIM}                                       and cost. The .deep/ findings become the{C.RESET}")
                     print(f"  {C.DIM}                                       definitive structural analysis.{C.RESET}")
+
+                    print(f"\n  {C.DIM}Smart + Subsystem + Prereq:{C.RESET}")
+                    print(f"  {C.DIM}  /scan auth.py smart                 adaptive chain: prereq → AgentsKB → analysis → dispute{C.RESET}")
+                    print(f"  {C.DIM}  /scan auth.py subsystem             per-class/function prism routing{C.RESET}")
+                    print(f'  {C.DIM}  /scan "build X" prereq              knowledge gaps → AgentsKB answers{C.RESET}')
+
+                    print(f"\n  {C.DIM}Dispute + Reflect + Explain:{C.RESET}")
+                    print(f"  {C.DIM}  /scan auth.py dispute               2 orthogonal prisms + disagreement synthesis{C.RESET}")
+                    print(f"  {C.DIM}  /scan auth.py reflect               L12 + meta + constraint history synthesis{C.RESET}")
+                    print(f"  {C.DIM}  /scan auth.py explain               preview all modes (no API calls){C.RESET}")
+                    print(f"  {C.DIM}  /kb list                            show persistent knowledge base{C.RESET}")
+                    print(f"  {C.DIM}  /brainstorm \"your question\"          alias for 3-way on text{C.RESET}")
 
                     print(f"\n  {C.DIM}Custom goal:{C.RESET}")
                     print(f'  {C.DIM}  /scan auth.py target="race conds"        cook prism for specific goal{C.RESET}')
@@ -3016,8 +3219,39 @@ class PrismREPL:
                 f"---\n")
             with open(_hist_path, "a", encoding="utf-8") as _hf:
                 _hf.write(_entry)
+            # Cap history at ~200 entries to prevent unbounded growth
+            _hist_raw = _hist_path.read_text(encoding="utf-8")
+            _blocks = _hist_raw.split("\n### ")
+            if len(_blocks) > 200:
+                # Keep preamble (first block) + last 199 entries
+                _trimmed = (_blocks[0] + "\n### "
+                            + "\n### ".join(_blocks[-199:]))
+                _hist_path.write_text(_trimmed, encoding="utf-8")
         except (OSError, PermissionError):
             pass  # Best-effort — never crash on history write
+
+        # Auto-update profile + KB from EVERY scan, but ONLY
+        # when the output contains high-confidence structural markers.
+        # Without this gate, the 42% accuracy on production code
+        # means wrong facts get persisted and poison future scans.
+        _has_structural = (
+            output and len(output) > 500
+            and any(marker in output for marker in (
+                "Conservation Law", "conservation law",
+                "CONSERVATION LAW", "× ", "x ",
+                "= constant", "STRUCTURAL",
+                "[STRUCTURAL]", "## Bug")))
+        if _has_structural:
+            try:
+                self._update_profile(
+                    file_name, None, output)
+            except Exception:
+                pass
+            try:
+                self._extract_and_queue_knowledge(
+                    file_name, output)
+            except Exception:
+                pass
 
     def _record_learning(self, event_type, data):
         """Record a learning event to .deep/learning.json.
@@ -3054,6 +3288,9 @@ class PrismREPL:
             _entry.update(data)
 
             _entries.append(_entry)
+            # Cap at 500 entries to prevent unbounded growth
+            if len(_entries) > 500:
+                _entries = _entries[-500:]
             _learn_path.write_text(
                 _json_learn.dumps(_entries, indent=2, ensure_ascii=False),
                 encoding="utf-8")
@@ -4198,10 +4435,16 @@ class PrismREPL:
         """Resolve a file path relative to working_dir."""
         if not arg:
             return None
-        path = pathlib.Path(arg)
-        if not path.is_absolute():
-            path = self.working_dir / path
-        return path if path.exists() else None
+        # Long text inputs (>200 chars) can't be file paths
+        if len(arg) > 200:
+            return None
+        try:
+            path = pathlib.Path(arg)
+            if not path.is_absolute():
+                path = self.working_dir / path
+            return path if path.exists() else None
+        except (OSError, ValueError):
+            return None
 
     def _get_deep_content(self, file_arg, clear_queued=True):
         """Get content for deep analysis — from arg or queued files.
@@ -4475,6 +4718,19 @@ class PrismREPL:
         elif len(parts) >= 2 and parts[-1] == "dispute":
             result["mode"] = "dispute"
             result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] == "prereq":
+            result["mode"] = "prereq"
+            result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] in (
+                "verify-claims", "testplan"):
+            result["mode"] = "verify_claims"
+            result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] == "subsystem":
+            result["mode"] = "subsystem"
+            result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] == "smart":
+            result["mode"] = "smart"
+            result["arg"] = " ".join(parts[:-1])
         elif len(parts) >= 2 and parts[-1] == "verified":
             result["mode"] = "verified"
             result["arg"] = " ".join(parts[:-1])
@@ -4505,9 +4761,10 @@ class PrismREPL:
             result["arg"] = " ".join(parts[:-1])
         elif len(parts) == 1 and parts[0] in (
                 "full", "discover", "expand", "behavioral", "3way",
-                "meta", "reflect", "dispute", "verified", "l12g",
-                "gaps", "evolve", "oracle", "scout", "strategist",
-                "explain"):
+                "meta", "reflect", "dispute", "prereq",
+                "subsystem", "smart", "verified", "l12g", "gaps",
+                "evolve", "oracle", "scout", "strategist",
+                "explain", "verify_claims"):
             result["mode"] = parts[0]
             result["arg"] = None
 
@@ -4517,7 +4774,7 @@ class PrismREPL:
         """/scan <file|text|dir> [mode] — structural analysis. See /help full."""
         if not arg:
             print(f"{C.YELLOW}Usage: /scan <file|dir|text> "
-                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
+                  f"[full|3way|behavioral|smart|subsystem|prereq|dispute|reflect|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
                   f"{C.RESET}")
             return
 
@@ -4527,7 +4784,7 @@ class PrismREPL:
 
         if not arg:
             print(f"{C.YELLOW}Usage: /scan <file|dir|text> "
-                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
+                  f"[full|3way|behavioral|smart|subsystem|prereq|dispute|reflect|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
                   f"{C.RESET}")
             return
 
@@ -4536,7 +4793,7 @@ class PrismREPL:
         # Defensive: ensure input_arg is a string before path operations
         if not isinstance(input_arg, str) or not input_arg.strip():
             print(f"{C.YELLOW}Usage: /scan <file|dir|text> "
-                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
+                  f"[full|3way|behavioral|smart|subsystem|prereq|dispute|reflect|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
                   f"{C.RESET}")
             return
 
@@ -4673,9 +4930,11 @@ class PrismREPL:
                                 f"[{f.get('source', '?')}]"
                                 for f in _active)
                             content = (
-                                f"<verified_knowledge>\n"
-                                f"Previously verified facts "
-                                f"about this file:\n"
+                                f"<verified_knowledge "
+                                f"source=\"KB-FACT\">\n"
+                                f"Deterministic facts from "
+                                f"knowledge base (ground "
+                                f"truth, not analysis):\n"
                                 f"{_facts}\n"
                                 f"</verified_knowledge>\n\n"
                                 f"{content}")
@@ -4734,9 +4993,17 @@ class PrismREPL:
                     _learn_data = _json_learn_scan.loads(
                         _learn_path.read_text(encoding="utf-8"))
                     if isinstance(_learn_data, list):
+                        # Decay: ignore entries older than 30 days
+                        import datetime as _dt_decay
+                        _cutoff = (_dt_decay.datetime.now()
+                                   - _dt_decay.timedelta(days=30)
+                                   ).strftime("%Y-%m-%d")
+                        _fresh = [
+                            e for e in _learn_data
+                            if e.get("date", "9999") >= _cutoff]
                         # Filter for this file
                         _file_events = [
-                            e for e in _learn_data
+                            e for e in _fresh
                             if e.get("file", "") == name
                             or name in e.get("file", "")]
                         _negatives = [
@@ -4768,6 +5035,23 @@ class PrismREPL:
             except (ValueError, OSError, PermissionError):
                 pass  # Best-effort
 
+            # C/D: Profile injection — DISABLED for scan context.
+            # A/B test (Mar 16) showed neutral effect (1565w vs 1544w).
+            # Profile is still maintained for /scan file reflect
+            # and smart mode, where it informs the synthesis step.
+            # But injecting into the L12 prism adds noise without
+            # improving conservation law discovery.
+
+            # E: Cross-project transfer — DISABLED.
+            # A/B test (Mar 16) showed injection HURTS:
+            # 882w with injection vs 1572w without.
+            # Model anchors on provided laws instead of
+            # discovering its own. Keep the method for
+            # future use but don't inject into scans.
+            # _cross = self._get_cross_project_context(
+            #     content, name)
+
+        if not name:
             name = input_arg[:40] + ("..." if len(input_arg) > 40 else "")
 
         general = not is_file
@@ -4896,6 +5180,42 @@ class PrismREPL:
             elif mode == "dispute":
                 self._run_dispute(
                     content, name, general=general)
+            elif mode == "prereq":
+                self._run_prereq(
+                    content, name, general=general)
+            elif mode == "subsystem":
+                self._run_subsystem(
+                    content, name, general=general)
+            elif mode == "smart":
+                self._run_smart(
+                    content, name, general=general)
+            elif mode == "verify_claims":
+                # Read prior findings for this file, run
+                # verify_claims prism on the analysis output
+                _stem = self._discover_cache_key(name)
+                _fp = (self.working_dir / ".deep"
+                       / "findings" / f"{_stem}.md")
+                if _fp.exists():
+                    _analysis = _fp.read_text(
+                        encoding="utf-8", errors="replace")
+                    print(f"\n{C.BOLD}{C.BLUE}── Verify "
+                          f"Claims ── {name} ──{C.RESET}")
+                    print(f"  {C.DIM}Reading prior findings "
+                          f"({len(_analysis.split())}w)"
+                          f"{C.RESET}")
+                    _vc_model = self._get_prism_model(
+                        "verify_claims") or "sonnet"
+                    saved = self.session.model
+                    self.session.model = MODEL_MAP.get(
+                        _vc_model, _vc_model)
+                    self._run_single_prism_streaming(
+                        "verify_claims", _analysis,
+                        name, general=True)
+                    self.session.model = saved
+                else:
+                    print(f"{C.YELLOW}No prior findings "
+                          f"for {name}. Run /scan first."
+                          f"{C.RESET}")
             elif mode == "oracle":
                 print(f"\n{C.BOLD}{C.BLUE}── ORACLE ── "
                       f"{name} ──{C.RESET}")
@@ -5216,6 +5536,65 @@ class PrismREPL:
               f"to generate domain-adapted prism. ~$0.15.")
         print(f"              {C.DIM}Saves evolved prism to "
               f".deep/prisms/.{C.RESET}")
+        print()
+
+        # 14. dispute
+        print(f"  {C.CYAN}dispute{C.RESET}     "
+              f"{C.BOLD}Dispute{C.RESET}")
+        _da = "l12 + identity" if is_code else "l12_universal + claim"
+        print(f"              3-call: {_da} → disagreement "
+              f"synthesis. ~$0.15.")
+        print(f"              {C.DIM}Surfaces where orthogonal "
+              f"prisms disagree. Much of Full's "
+              f"self-correction at 33% cost.{C.RESET}")
+        print()
+
+        # 15. reflect
+        print(f"  {C.CYAN}reflect{C.RESET}     "
+              f"{C.BOLD}Reflect{C.RESET}")
+        print(f"              3-call: L12 → claim → constraint "
+              f"synthesis with history + learning. ~$0.15.")
+        print(f"              {C.DIM}Recurring patterns, "
+              f"unexplored dimensions, next best scan.{C.RESET}")
+        print()
+
+        # 16. strategist
+        print(f"  {C.CYAN}strategist{C.RESET}  "
+              f"{C.BOLD}Strategist{C.RESET}")
+        print(f"              2-call: plan optimal tool sequence "
+              f"for a goal + adversarial critique. ~$0.12.")
+        print(f"              {C.DIM}Meta-agent: picks the right "
+              f"prisms and modes for your goal.{C.RESET}")
+        print()
+
+        # 17. prereq
+        print(f"  {C.CYAN}prereq{C.RESET}      "
+              f"{C.BOLD}Prerequisites{C.RESET}")
+        print(f"              2+ calls: identify knowledge gaps "
+              f"→ batch query AgentsKB. ~$0.10+.")
+        print(f"              {C.DIM}What do you need to know "
+              f"BEFORE analyzing this code?{C.RESET}")
+        print()
+
+        # 18. subsystem
+        if is_code:
+            print(f"  {C.CYAN}subsystem{C.RESET}   "
+                  f"{C.BOLD}Subsystem Routing{C.RESET}")
+            print(f"              N+2 calls: AST split → "
+                  f"per-region prisms → cross-subsystem "
+                  f"synthesis. ~$0.15-0.55.")
+            print(f"              {C.DIM}Different prism per "
+                  f"class/function. Highest coverage.{C.RESET}")
+            print()
+
+        # 19. smart
+        print(f"  {C.CYAN}smart{C.RESET}       "
+              f"{C.BOLD}Smart (adaptive chain){C.RESET}")
+        print(f"              5+ steps: prereq → AgentsKB → "
+              f"{'subsystem' if is_code else '3way'} → "
+              f"dispute → profile.")
+        print(f"              {C.DIM}System decides the "
+              f"pipeline. Self-improving.{C.RESET}")
         print()
 
         # ── Recommendation ──
@@ -6470,26 +6849,40 @@ class PrismREPL:
 
         synth_input += (
             "---\n\n## TASK\n\n"
-            "Synthesize the above into a constraint summary:\n"
-            "1. What patterns RECUR across analyses?\n"
-            "2. What dimensions have NOT been explored yet?\n"
-            "3. What false positives or rejected advice should "
-            "future scans avoid?\n"
-            "4. What is the single most important unexplored "
-            "structural question about this code?")
+            "Execute every step. Output the complete analysis.\n\n"
+            "## RECURRING PATTERNS\n"
+            "What structural properties appear across multiple "
+            "prior analyses? Name each with evidence.\n\n"
+            "## UNEXPLORED DIMENSIONS\n"
+            "Which analytical angles have NOT been covered? "
+            "Be specific: name the prism or operation that would "
+            "reveal each gap.\n\n"
+            "## KNOWN FALSE POSITIVES\n"
+            "List patterns that prior scans flagged but the user "
+            "rejected as intentional design. Future scans must "
+            "avoid these.\n\n"
+            "## NEXT BEST SCAN\n"
+            "The single most valuable next analytical step for "
+            "this code. Which mode, which prism, targeting what "
+            "specific structural question?")
 
-        _synth_model = self._get_prism_model(
-            "l12_synthesis") or "opus"
+        # Sonnet for reflect synthesis. Opus is optimal per grid but
+        # times out on large inputs (proven VPS test). Sonnet produces
+        # equivalent quality on synthesis tasks ("Ontology Blindness").
+        _synth_model = "sonnet"
         self.session.model = MODEL_MAP.get(
             _synth_model, _synth_model)
-        synth_output = self._claude.call(
-            "You are a structural analyst synthesizing "
-            "prior analyses into actionable constraints.",
-            synth_input, model=_synth_model, timeout=120)
+        backend = ClaudeBackend(
+            model=self.session.model,
+            working_dir=str(self.working_dir),
+            system_prompt=(
+                "You are a structural analyst synthesizing "
+                "prior analyses into actionable constraints."),
+            tools=False,
+        )
+        synth_output = self._stream_and_capture(
+            backend, synth_input)
         self.session.model = saved_model
-
-        if synth_output:
-            print(synth_output, flush=True)
 
         # Save combined output
         combined = (
@@ -6559,24 +6952,33 @@ class PrismREPL:
             return
 
         # Synthesis: focus on disagreements
+        # Omit source code — analyses already reference it.
+        # Truncate each analysis to avoid context overflow.
         print(f"\n{C.BOLD}{C.BLUE}── Disagreement Synthesis "
               f"── {file_name} ──{C.RESET}")
+        # Cap each analysis at ~8000 chars (~2000 words) to stay within
+        # context window for synthesis. Full outputs saved to findings.
+        _a_trunc = output_a[:8000] if len(output_a) > 8000 else output_a
+        _b_trunc = output_b[:8000] if len(output_b) > 8000 else output_b
         synth_input = (
-            f"# SOURCE CODE\n\n{content}\n\n---\n\n"
-            f"# LENS A: {prism_a}\n\n{output_a}\n\n---\n\n"
-            f"# LENS B: {prism_b}\n\n{output_b}")
+            f"# LENS A: {prism_a}\n\n{_a_trunc}\n\n---\n\n"
+            f"# LENS B: {prism_b}\n\n{_b_trunc}")
 
-        _synth_model = self._get_prism_model(
-            "l12_synthesis") or "opus"
+        # Sonnet for dispute synthesis. Opus times out on 2-analysis
+        # inputs (proven: empty synthesis on VPS). Sonnet works.
+        _synth_model = "sonnet"
         self.session.model = MODEL_MAP.get(
             _synth_model, _synth_model)
-        synth = self._claude.call(
-            DISPUTE_SYNTHESIS_PROMPT,
-            synth_input, model=_synth_model, timeout=120)
-        self.session.model = saved_model
 
-        if synth:
-            print(synth, flush=True)
+        # Use streaming for synthesis (handles large context better)
+        backend = ClaudeBackend(
+            model=self.session.model,
+            working_dir=str(self.working_dir),
+            system_prompt=DISPUTE_SYNTHESIS_PROMPT,
+            tools=False,
+        )
+        synth = self._stream_and_capture(backend, synth_input)
+        self.session.model = saved_model
 
         # Save all outputs
         combined = (
@@ -6872,6 +7274,9 @@ class PrismREPL:
                             if e["claim"] not in _existing_claims]
                     if _new:
                         _existing.extend(_new)
+                        # Cap at 500 entries per file
+                        if len(_existing) > 500:
+                            _existing = _existing[-500:]
                         _kb_path.write_text(
                             _json_kb_save.dumps(
                                 _existing, indent=2),
@@ -6881,6 +7286,1065 @@ class PrismREPL:
                               f"{_kb_stem}.json{C.RESET}")
         except Exception:
             pass  # KB save is best-effort
+
+    def _fill_gaps_agentskb(self, gap_json):
+        """J7: Fill KNOWLEDGE gaps via AgentsKB REST API.
+
+        Queries agentskb.com (free, no auth) for gaps with fill_source
+        in (API_DOCS, COMMUNITY, BENCHMARK). Returns list of
+        {claim, answer, source, confidence} for successfully filled gaps.
+        """
+        import json as _json_fill
+        import urllib.request
+        import urllib.error
+
+        # Parse gap JSON
+        _raw = gap_json
+        if "```json" in _raw:
+            _raw = _raw.split("```json")[1].split("```")[0]
+        try:
+            gaps = _json_fill.loads(_raw)
+        except (ValueError, TypeError):
+            return []
+
+        if not isinstance(gaps, list):
+            return []
+
+        # Filter to fillable gaps
+        fillable_sources = {"API_DOCS", "COMMUNITY", "BENCHMARK",
+                            "CHANGELOG"}
+        fillable = [g for g in gaps
+                    if isinstance(g, dict)
+                    and g.get("fill_source") in fillable_sources
+                    and g.get("query")]
+
+        if not fillable:
+            return []
+
+        filled = []
+        api_url = "https://agentskb-api.agentskb.com/api/free/ask"
+
+        for gap in fillable[:5]:  # Cap at 5 to avoid rate limits
+            query = gap["query"]
+            try:
+                req_data = _json_fill.dumps({
+                    "question": query
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    api_url,
+                    data=req_data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Prism/1.0",
+                        "Accept": "application/json",
+                    },
+                    method="POST")
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    result = _json_fill.loads(
+                        resp.read().decode("utf-8"))
+                    answer = result.get("answer", "")
+                    conf = result.get("confidence") or 0
+                    match = result.get("match_score") or 0
+                    sources = result.get("sources", [])
+                    # Accept if answer exists and either confidence
+                    # or match_score is above threshold
+                    if answer and (conf >= 0.7 or match >= 0.7):
+                        filled.append({
+                            "claim": gap.get("claim", query),
+                            "answer": answer,
+                            "source": (sources[0]
+                                       if sources else "agentskb"),
+                            "confidence": conf,
+                        })
+                        print(f"    {C.GREEN}Filled: "
+                              f"{query[:60]}{C.RESET}")
+                    else:
+                        print(f"    {C.DIM}No match: "
+                              f"{query[:60]}{C.RESET}")
+            except (urllib.error.URLError, urllib.error.HTTPError,
+                    OSError, ValueError, KeyError) as e:
+                print(f"    {C.DIM}Skip: {query[:40]} "
+                      f"({type(e).__name__}){C.RESET}")
+                continue
+
+        return filled
+
+    def _batch_query_agentskb(self, questions):
+        """Query AgentsKB batch endpoint with up to 100 questions.
+
+        Returns list of {question, answer, sources, match_score}
+        for questions that got answers. Skips unanswered.
+        Uses /api/free/ask-batch (up to 20 per call).
+        """
+        import json as _json_batch
+        import urllib.request
+        import urllib.error
+
+        if not questions:
+            return []
+
+        api_url = ("https://agentskb-api.agentskb.com"
+                   "/api/free/ask-batch")
+        results = []
+
+        # Batch in groups of 20 (API limit per call)
+        for i in range(0, len(questions), 20):
+            batch = questions[i:i + 20]
+            try:
+                req_data = _json_batch.dumps({
+                    "questions": batch
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    api_url,
+                    data=req_data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Prism/1.0",
+                    },
+                    method="POST")
+                with urllib.request.urlopen(
+                        req, timeout=30) as resp:
+                    data = _json_batch.loads(
+                        resp.read().decode("utf-8"))
+                    answers = data.get("answers", [])
+                    for a in answers:
+                        if (isinstance(a, dict)
+                                and a.get("answer")
+                                and a.get("answer") != "No answer found"):
+                            results.append({
+                                "question": a.get("question", ""),
+                                "answer": a["answer"],
+                                "sources": a.get("sources", []),
+                                "match_score": a.get(
+                                    "match_score", 0),
+                            })
+            except (urllib.error.URLError,
+                    urllib.error.HTTPError,
+                    OSError, ValueError) as e:
+                print(f"  {C.DIM}Batch {i//20 + 1} "
+                      f"failed: {type(e).__name__}{C.RESET}")
+                # Fall back to individual queries
+                for q in batch:
+                    single = self._fill_gaps_agentskb(
+                        _json_batch.dumps([{
+                            "claim": q, "fill_source": "API_DOCS",
+                            "query": q, "confidence": 0.3}]))
+                    for s in single:
+                        results.append({
+                            "question": q,
+                            "answer": s["answer"],
+                            "sources": [s["source"]],
+                            "match_score": s.get(
+                                "confidence", 0),
+                        })
+
+        return results
+
+    def _run_smart(self, content, file_name, general=False):
+        """Smart: adaptive chain engine that composes modes automatically.
+
+        The system decides the pipeline based on input characteristics:
+        1. Prereq scan → identify knowledge gaps
+        2. AgentsKB batch fill → get verified facts
+        3. Inject facts → analyze with subsystem or L12
+        4. Dispute on richest finding → self-correct
+        5. Save profile + KB + learning
+        """
+        print(f"\n{C.BOLD}{C.BLUE}══ SMART ANALYSIS ══ "
+              f"{file_name} ══{C.RESET}")
+        print(f"  {C.DIM}Adaptive pipeline: the system "
+              f"decides each step.{C.RESET}")
+
+        saved_model = self.session.model
+        is_code = not general
+
+        # ── Step 1: Prereq — what do we need to know? ──
+        print(f"\n{C.BOLD}Step 1: Knowledge prerequisites"
+              f"{C.RESET}")
+        _prereq_model = self._get_prism_model(
+            "prereq") or "sonnet"
+        self.session.model = MODEL_MAP.get(
+            _prereq_model, _prereq_model)
+        # When analyzing code, frame prereq as "what do I need
+        # to know to ANALYZE this code?" not "what task is this?"
+        if is_code:
+            _prereq_input = (
+                f"TASK: Perform a deep structural analysis "
+                f"of {file_name}. Identify conservation laws, "
+                f"hidden trade-offs, and bugs.\n\n"
+                f"CODE TO ANALYZE:\n{content[:3000]}")
+        else:
+            _prereq_input = content
+        prereq_output = self._run_single_prism_streaming(
+            "prereq", _prereq_input, file_name, general=True)
+        self.session.model = saved_model
+
+        # Extract questions (reuse prereq's extraction logic)
+        _questions = self._extract_questions_from_prereq(
+            prereq_output) if prereq_output else []
+
+        # ── Step 2: AgentsKB fill — get verified facts ──
+        verified_context = ""
+        if _questions:
+            print(f"\n{C.BOLD}Step 2: Querying AgentsKB "
+                  f"({len(_questions)} questions){C.RESET}")
+            _answered = self._batch_query_agentskb(_questions)
+            if _answered:
+                verified_context = (
+                    "<verified_knowledge source=\"KB-FACT\">\n"
+                    "Deterministic facts from AgentsKB "
+                    "(ground truth, not analysis):\n"
+                    + "\n".join(
+                        f"- [KB-FACT] {a['question']}: "
+                        f"{a['answer']}"
+                        for a in _answered)
+                    + "\n</verified_knowledge>\n\n")
+                print(f"  {C.DIM}Filled "
+                      f"{len(_answered)}/"
+                      f"{len(_questions)} gaps{C.RESET}")
+            else:
+                print(f"  {C.DIM}No gaps filled{C.RESET}")
+        else:
+            print(f"\n{C.BOLD}Step 2: Skipped "
+                  f"(no questions extracted){C.RESET}")
+
+        # Inject verified facts into content
+        enriched_content = verified_context + content
+
+        if self._interrupted:
+            self.session.model = saved_model
+            return
+
+        # ── Step 3: Analyze — subsystem or L12 ──
+        if is_code:
+            subsystems = _split_into_subsystems(
+                content, file_name)
+            if len(subsystems) > 1:
+                print(f"\n{C.BOLD}Step 3: Subsystem analysis "
+                      f"({len(subsystems)} regions){C.RESET}")
+                # Run subsystem with enriched content
+                self._run_subsystem(
+                    enriched_content, file_name,
+                    general=False)
+            else:
+                print(f"\n{C.BOLD}Step 3: L12 structural "
+                      f"analysis{C.RESET}")
+                _l12_model = self._get_prism_model(
+                    "l12") or "sonnet"
+                self.session.model = MODEL_MAP.get(
+                    _l12_model, _l12_model)
+                self._run_single_prism_streaming(
+                    "l12", enriched_content, file_name,
+                    general=False)
+                self.session.model = saved_model
+        else:
+            print(f"\n{C.BOLD}Step 3: 3-way analysis "
+                  f"(text input){C.RESET}")
+            self._run_3way_pipeline(
+                enriched_content, file_name, general=True)
+
+        if self._interrupted:
+            self.session.model = saved_model
+            return
+
+        # ── Step 4: Dispute — self-correct (adaptive) ──
+        # Load findings from step 3 and decide if dispute is needed.
+        # If a conservation law was found, analysis converged — dispute
+        # adds correction but less value. If NO law found, dispute is
+        # more critical (something may have gone wrong).
+        _stem = self._discover_cache_key(file_name)
+        _findings_path = (self.working_dir / ".deep"
+                          / "findings" / f"{_stem}.md")
+        _step3_output = ""
+        if _findings_path.exists():
+            _step3_output = _findings_path.read_text(
+                encoding="utf-8", errors="replace")
+
+        _has_law = (_step3_output
+                    and ("conservation law" in _step3_output.lower()
+                         or "= constant" in _step3_output.lower()))
+
+        if _step3_output and len(_step3_output) > 200:
+            if _has_law:
+                print(f"\n{C.BOLD}Step 4: Dispute — "
+                      f"self-correction (conservation law "
+                      f"found, verifying){C.RESET}")
+            else:
+                print(f"\n{C.BOLD}Step 4: Dispute — "
+                      f"self-correction (no conservation law "
+                      f"found, critical check){C.RESET}")
+            self._run_dispute(
+                enriched_content, file_name,
+                general=general)
+        else:
+            print(f"\n{C.BOLD}Step 4: Skipped "
+                  f"(insufficient findings){C.RESET}")
+
+        if self._interrupted:
+            self.session.model = saved_model
+            return
+
+        # ── Step 5: Save profile + seed knowledge ──
+        print(f"\n{C.BOLD}Step 5: Updating codebase "
+              f"profile + seeding knowledge{C.RESET}")
+        self._update_profile(file_name, prereq_output,
+                             _step3_output)
+        self._extract_and_queue_knowledge(
+            file_name, _step3_output)
+
+        print(f"\n{C.GREEN}══ Smart analysis complete ══"
+              f"{C.RESET}")
+        print(f"  {C.DIM}Steps: prereq → AgentsKB "
+              f"({len(_questions)} questions) → "
+              f"{'subsystem' if is_code else '3way'} → "
+              f"dispute → profile{C.RESET}")
+
+        # Guard: restore model in case any sub-method crashed
+        self.session.model = saved_model
+
+        # Convergence detection: check if this scan's conservation
+        # law matches prior scans. If so, analysis has converged —
+        # additional scans add breadth, not depth.
+        try:
+            import json as _json_conv
+            _prof_path = (self.working_dir / ".deep"
+                          / "profile.json")
+            if _prof_path.exists():
+                _prof = _json_conv.loads(
+                    _prof_path.read_text(encoding="utf-8"))
+                _scan_n = _prof.get("scan_count", 0)
+                _laws = _prof.get("conservation_laws", [])
+                if _scan_n >= 3 and _laws:
+                    print(f"\n{C.BOLD}Convergence check:"
+                          f"{C.RESET}")
+                    print(f"  {C.DIM}Scan #{_scan_n}. "
+                          f"Conservation law: "
+                          f"{_laws[-1][:80]}{C.RESET}")
+                    if _scan_n >= 5:
+                        print(f"  {C.YELLOW}Analysis has likely "
+                              f"converged after {_scan_n} "
+                              f"scans. Additional scans add "
+                              f"breadth, not depth. Consider "
+                              f"dispute or reflect for "
+                              f"self-correction.{C.RESET}")
+        except Exception:
+            pass
+
+        self._session_log.append(
+            operation="smart",
+            file_name=file_name,
+            lens="prereq+agentskb+analysis+dispute",
+            model=self.session.model,
+            mode="smart")
+
+    def _update_profile(self, file_name, prereq_output,
+                        analysis_output):
+        """D: Update persistent codebase profile from analysis.
+
+        Extracts patterns, conservation laws, and structural
+        facts. Accumulates across scans in .deep/profile.json.
+        """
+        import json as _json_prof
+        import datetime as _dt_prof
+
+        _prof_path = self.working_dir / ".deep" / "profile.json"
+        _prof_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Load existing profile
+        profile = {
+            "patterns": [],
+            "conservation_laws": [],
+            "known_facts": [],
+            "scan_count": 0,
+            "files_analyzed": [],
+            "last_updated": "",
+        }
+        if _prof_path.exists():
+            try:
+                profile = _json_prof.loads(
+                    _prof_path.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                pass
+
+        # Update metadata
+        profile["scan_count"] = profile.get(
+            "scan_count", 0) + 1
+        profile["last_updated"] = (
+            _dt_prof.datetime.now().strftime("%Y-%m-%d %H:%M"))
+        _files = profile.get("files_analyzed", [])
+        if file_name not in _files:
+            _files.append(file_name)
+            profile["files_analyzed"] = _files[-20:]
+
+        # Extract conservation laws from analysis — STRICT.
+        # Only accept strings that look like actual formulas:
+        # must contain × or "x" operator and = sign.
+        # Prevents: labels, questions, partial sentences.
+        if analysis_output:
+            import re as _re_prof
+            _laws = _re_prof.findall(
+                r'[Cc]onservation [Ll]aw[:\s]*[`"\']*(.+?)'
+                r'[`"\']*(?:\n|$)',
+                analysis_output)
+            _reject = {"none", "n/a", "not found", "unclear",
+                       "conceals", "breaks down", "pattern",
+                       "cycles", "the conservation"}
+            _existing_laws = set(
+                profile.get("conservation_laws", []))
+            for law in _laws[:5]:
+                _clean = law.strip().strip("*`\"'")
+                _lower = _clean.lower()
+                if (_clean
+                        and 15 < len(_clean) < 150
+                        and ("=" in _clean or "×" in _clean)
+                        and not any(r in _lower
+                                    for r in _reject)
+                        and _clean not in _existing_laws):
+                    _existing_laws.add(_clean)
+            # Keep only recent laws — codebases evolve.
+            # Old laws from 50 scans ago may not apply.
+            profile["conservation_laws"] = list(
+                _existing_laws)[-5:]
+
+        # Extract patterns from prereq domains
+        if prereq_output:
+            import re as _re_prof2
+            _domains = _re_prof2.findall(
+                r'^\d+\.\s+\*\*(.+?)\*\*',
+                prereq_output, _re_prof2.MULTILINE)
+            _existing = set(profile.get("patterns", []))
+            for d in _domains[:10]:
+                if d not in _existing:
+                    _existing.add(d)
+            profile["patterns"] = list(_existing)[-15:]
+
+        # Merge known facts from KB
+        _kb_stem = self._discover_cache_key(file_name)
+        _kb_path = (self.working_dir / ".deep" / "knowledge"
+                    / f"{_kb_stem}.json")
+        if _kb_path.exists():
+            try:
+                _kb = _json_prof.loads(
+                    _kb_path.read_text(encoding="utf-8"))
+                _existing_facts = set(
+                    profile.get("known_facts", []))
+                for entry in _kb[:20]:
+                    if isinstance(entry, dict):
+                        fact = entry.get("claim", "")
+                        if (fact and len(fact) > 10
+                                and fact not in _existing_facts):
+                            _existing_facts.add(fact)
+                profile["known_facts"] = list(
+                    _existing_facts)[-30:]
+            except (ValueError, OSError):
+                pass
+
+        # Save
+        try:
+            _prof_path.write_text(
+                _json_prof.dumps(profile, indent=2,
+                                 ensure_ascii=False),
+                encoding="utf-8")
+            print(f"  {C.DIM}Profile: {profile['scan_count']} "
+                  f"scans, {len(profile.get('patterns', []))} "
+                  f"patterns, "
+                  f"{len(profile.get('conservation_laws', []))} "
+                  f"laws{C.RESET}")
+        except (OSError, PermissionError):
+            pass
+
+    # E: Cross-project knowledge — proven conservation laws by domain
+    # From 41 rounds of research across Starlette, Click, Tenacity
+    CROSS_PROJECT_LAWS = {
+        "web framework": (
+            "flexibility x predictability = constant "
+            "(more flexible routing = less predictable dispatch)"),
+        "routing": (
+            "API ergonomics x internal complexity = constant "
+            "(clean external API = complex internal state)"),
+        "cli": (
+            "decorator expressiveness x invocation transparency = "
+            "constant (richer decorators = harder to trace execution)"),
+        "retry": (
+            "resilience x resource consumption = constant "
+            "(more retry = more resource pressure)"),
+        "async": (
+            "concurrency x state isolation = constant "
+            "(more concurrent = harder to isolate state)"),
+        "middleware": (
+            "composability x debuggability = constant "
+            "(more composable middleware = harder to trace request flow)"),
+        "state": (
+            "mutability x predictability = constant "
+            "(mutable state = unpredictable behavior)"),
+    }
+
+    def _get_cross_project_context(self, content, file_name):
+        """E: Detect domain from content, return relevant cross-project laws."""
+        _lower = content[:3000].lower()
+        relevant = []
+        for domain, law in self.CROSS_PROJECT_LAWS.items():
+            # Simple keyword matching
+            if domain in _lower or domain.replace(" ", "_") in _lower:
+                relevant.append(f"- {domain}: {law}")
+            elif (domain == "web framework"
+                  and any(k in _lower for k in
+                          ["route", "request", "response",
+                           "middleware", "handler", "endpoint"])):
+                relevant.append(f"- {domain}: {law}")
+            elif (domain == "async"
+                  and any(k in _lower for k in
+                          ["async", "await", "asyncio",
+                           "coroutine", "event_loop"])):
+                relevant.append(f"- {domain}: {law}")
+            elif (domain == "retry"
+                  and any(k in _lower for k in
+                          ["retry", "backoff", "resilience",
+                           "circuit", "timeout"])):
+                relevant.append(f"- {domain}: {law}")
+        return relevant[:3]  # Max 3 relevant laws
+
+    def _extract_and_queue_knowledge(self, file_name,
+                                      analysis_output):
+        """B: Extract structural facts from analysis, queue for AgentsKB.
+
+        Saves to .deep/seed_queue/ as JSON Q&As. These are facts
+        the analysis discovered that should become permanent knowledge.
+        When AgentsKB has a seeding API, this queue can be flushed.
+        """
+        if not analysis_output or len(analysis_output) < 200:
+            return
+
+        import json as _json_seed
+        import re as _re_seed
+
+        # Extract conservation laws — ONLY from labeled sections.
+        # Reject vague matches like "conservation law: none found"
+        # or "the conservation law breaks down when..."
+        qas = []
+        _laws = _re_seed.findall(
+            r'[Cc]onservation [Ll]aw[:\s]*["\']?(.+?)["\']?'
+            r'(?:\n|$)',
+            analysis_output)
+        _reject = {"none", "n/a", "not found", "unclear",
+                   "breaks down", "does not", "doesn't"}
+        for law in _laws[:3]:
+            _clean = law.strip().strip("*`")
+            _lower = _clean.lower()
+            if (_clean and len(_clean) > 15
+                    and len(_clean) < 200
+                    and not any(r in _lower for r in _reject)
+                    and ("=" in _clean or "×" in _clean
+                         or " x " in _lower)):
+                qas.append({
+                    "question": (f"What is the structural "
+                                 f"conservation law of "
+                                 f"{file_name}?"),
+                    "answer": _clean,
+                    "topic": "code-analysis",
+                    "type": "explanation",
+                    "source": f"prism-analysis:{file_name}",
+                })
+
+        # Extract structural findings (bug patterns, design facts)
+        _findings = _re_seed.findall(
+            r'(?:STRUCTURAL|structural)[:\s]+(.+?)(?:\n|$)',
+            analysis_output)
+        for f in _findings[:5]:
+            _clean = f.strip().strip("*`")
+            if _clean and len(_clean) > 20:
+                qas.append({
+                    "question": (f"What structural property "
+                                 f"does {file_name} have?"),
+                    "answer": _clean,
+                    "topic": "code-analysis",
+                    "type": "fact",
+                    "source": f"prism-analysis:{file_name}",
+                })
+
+        if not qas:
+            return
+
+        # Save to seed queue
+        try:
+            _queue_dir = (self.working_dir / ".deep"
+                          / "seed_queue")
+            _queue_dir.mkdir(parents=True, exist_ok=True)
+            _stem = self._discover_cache_key(file_name)
+            _queue_path = _queue_dir / f"{_stem}.json"
+
+            _existing = []
+            if _queue_path.exists():
+                try:
+                    _existing = _json_seed.loads(
+                        _queue_path.read_text(
+                            encoding="utf-8"))
+                except (ValueError, OSError):
+                    _existing = []
+
+            # Dedup by question
+            _existing_q = {e.get("question", "")
+                           for e in _existing}
+            _new = [q for q in qas
+                    if q["question"] not in _existing_q]
+            if _new:
+                _existing.extend(_new)
+                # Cap at 50 per file
+                if len(_existing) > 50:
+                    _existing = _existing[-50:]
+                _queue_path.write_text(
+                    _json_seed.dumps(
+                        _existing, indent=2,
+                        ensure_ascii=False),
+                    encoding="utf-8")
+                print(f"  {C.DIM}Queued {len(_new)} Q&As "
+                      f"for AgentsKB seeding{C.RESET}")
+
+                # Also save extracted facts to local KB
+                # so the SAME project benefits immediately.
+                _kb_stem = self._discover_cache_key(file_name)
+                _kb_dir = (self.working_dir / ".deep"
+                           / "knowledge")
+                _kb_dir.mkdir(parents=True, exist_ok=True)
+                _kb_path = _kb_dir / f"{_kb_stem}.json"
+                import time as _time_seed
+                _now = _time_seed.time()
+                _kb_new = []
+                for q in _new:
+                    _kb_new.append({
+                        "claim": q.get("answer", q["question"]),
+                        "type": "STRUCTURAL",
+                        "confidence": 0.8,
+                        "source": f"prism:{file_name}",
+                        "verified": True,
+                        "date": _now,
+                        "expires": _now + 90 * 86400,
+                    })
+                if _kb_new:
+                    _kb_existing = []
+                    if _kb_path.exists():
+                        try:
+                            _kb_existing = _json_seed.loads(
+                                _kb_path.read_text(
+                                    encoding="utf-8"))
+                        except (ValueError, OSError):
+                            _kb_existing = []
+                    _kb_claims = {e.get("claim", "")
+                                  for e in _kb_existing}
+                    _kb_truly_new = [
+                        e for e in _kb_new
+                        if e["claim"] not in _kb_claims]
+                    if _kb_truly_new:
+                        _kb_existing.extend(_kb_truly_new)
+                        if len(_kb_existing) > 500:
+                            _kb_existing = _kb_existing[-500:]
+                        _kb_path.write_text(
+                            _json_seed.dumps(
+                                _kb_existing, indent=2),
+                            encoding="utf-8")
+        except (OSError, PermissionError):
+            pass
+
+    def _run_subsystem(self, content, file_name, general=False):
+        """B2: Sub-artifact targeting — different prisms per subsystem.
+
+        Phase 1: AST split into classes/functions.
+        Phase 2: Calibration call assigns optimal prism per subsystem.
+        Phase 3: Parallel execution with per-subsystem prism.
+        Phase 4: Cross-subsystem synthesis.
+        """
+        if general:
+            print(f"{C.YELLOW}Subsystem mode requires code, "
+                  f"not text input.{C.RESET}")
+            return
+
+        # Phase 1: Split
+        print(f"\n{C.BOLD}{C.BLUE}── Subsystem Analysis ── "
+              f"{file_name} ──{C.RESET}")
+        subsystems = _split_into_subsystems(content, file_name)
+        if len(subsystems) <= 1:
+            print(f"  {C.YELLOW}File has {len(subsystems)} "
+                  f"subsystem(s) — falling back to L12.{C.RESET}")
+            self._run_single_prism_streaming(
+                "l12", content, file_name, general=False)
+            return
+
+        print(f"  {C.DIM}Split into {len(subsystems)} "
+              f"subsystems:{C.RESET}")
+        for s in subsystems:
+            lines = s["end_line"] - s["start_line"] + 1
+            print(f"    {s['name']} ({s['kind']}, "
+                  f"{lines} lines)")
+
+        saved_model = self.session.model
+
+        # Phase 2: Calibrate — assign prisms
+        print(f"\n{C.BOLD}Phase 2: Assigning prisms{C.RESET}")
+        # Build prism catalog from OPTIMAL_PRISM_MODEL
+        _exclude = {"writer", "writer_critique",
+                     "writer_synthesis", "behavioral_synthesis",
+                     "l12_complement_adversarial",
+                     "l12_synthesis", "l12_universal",
+                     "arc_code", "codegen", "prereq"}
+        _catalog_lines = []
+        for pname in sorted(OPTIMAL_PRISM_MODEL.keys()):
+            if pname in _exclude:
+                continue
+            # Load first line of prism description
+            _p = self._load_prism(pname)
+            if _p:
+                _desc = _p.split("\n")[0][:80] if _p else ""
+                _catalog_lines.append(
+                    f"- {pname}: {_desc}")
+        _catalog = "\n".join(_catalog_lines)
+
+        _summaries = "\n".join(
+            f"- {s['name']} ({s['kind']}, "
+            f"{s['end_line'] - s['start_line'] + 1} lines): "
+            f"{s['content'][:100].strip()}"
+            for s in subsystems)
+
+        _cal_prompt = CALIBRATE_SUBSYSTEM_PROMPT.format(
+            prism_catalog=_catalog,
+            subsystem_summaries=_summaries)
+
+        self.session.model = MODEL_MAP.get("sonnet", "sonnet")
+        _cal_raw = self._claude.call(
+            _cal_prompt, "Assign prisms.",
+            model="sonnet", timeout=30)
+        self.session.model = saved_model
+
+        # Parse assignments
+        import json as _json_sub
+        assignments = {}
+        if _cal_raw:
+            try:
+                _raw = _cal_raw
+                if "```json" in _raw:
+                    _raw = _raw.split("```json")[1].split(
+                        "```")[0]
+                _parsed = _json_sub.loads(_raw)
+                for a in _parsed.get("assignments", []):
+                    assignments[a["subsystem"]] = a["prism"]
+            except (ValueError, TypeError, KeyError):
+                pass
+
+        # Fallback: L12 for unassigned
+        for s in subsystems:
+            if s["name"] not in assignments:
+                assignments[s["name"]] = "l12"
+
+        for name, prism in assignments.items():
+            print(f"    {name} → {prism}")
+
+        # Phase 3: Execute per-subsystem
+        print(f"\n{C.BOLD}Phase 3: Running "
+              f"{len(subsystems)} analyses{C.RESET}")
+        outputs = []
+        _other_names = ", ".join(
+            s["name"] for s in subsystems)
+
+        for s in subsystems:
+            if self._interrupted:
+                break
+            prism_name = assignments.get(s["name"], "l12")
+            _opt = self._get_prism_model(
+                prism_name) or "sonnet"
+            self.session.model = MODEL_MAP.get(_opt, _opt)
+
+            # Context header
+            _header = (
+                f"# SUBSYSTEM: {s['name']} "
+                f"(lines {s['start_line']}-{s['end_line']} "
+                f"of {file_name})\n"
+                f"# OTHER SUBSYSTEMS: {_other_names}\n\n")
+
+            output = self._run_single_prism_streaming(
+                prism_name, _header + s["content"],
+                file_name,
+                label=(f"{s['name']} ({prism_name}) "
+                       f"── {file_name}"),
+                general=False)
+            if output:
+                outputs.append({
+                    "subsystem": s["name"],
+                    "prism": prism_name,
+                    "output": output,
+                })
+
+        self.session.model = saved_model
+
+        if not outputs:
+            print(f"{C.RED}No subsystem outputs{C.RESET}")
+            return
+
+        # Phase 4: Synthesis
+        print(f"\n{C.BOLD}Phase 4: Cross-subsystem "
+              f"synthesis{C.RESET}")
+        _sub_outputs = "\n\n---\n\n".join(
+            f"## SUBSYSTEM: {o['subsystem']} "
+            f"(via {o['prism']})\n\n{o['output']}"
+            for o in outputs)
+        _synth_prompt = SUBSYSTEM_SYNTHESIS_PROMPT.format(
+            n=len(outputs),
+            subsystem_outputs=_sub_outputs)
+
+        # Sonnet for subsystem synthesis. Opus times out on
+        # large multi-subsystem inputs.
+        self.session.model = MODEL_MAP.get("sonnet", "sonnet")
+        backend = ClaudeBackend(
+            model=self.session.model,
+            working_dir=str(self.working_dir),
+            system_prompt=_synth_prompt,
+            tools=False,
+        )
+        synth = self._stream_and_capture(
+            backend, "Synthesize cross-subsystem findings.")
+        self.session.model = saved_model
+
+        # Save all
+        combined = _sub_outputs
+        if synth:
+            combined += (f"\n\n---\n\n"
+                         f"## CROSS-SUBSYSTEM SYNTHESIS"
+                         f"\n\n{synth}")
+        self._save_deep_finding(
+            file_name, "subsystem", combined)
+
+        print(f"\n{C.GREEN}Subsystem analysis complete: "
+              f"{len(outputs)} subsystems + synthesis"
+              f"{C.RESET}")
+
+        self._session_log.append(
+            operation="subsystem",
+            file_name=file_name,
+            lens="+".join(
+                o["prism"] for o in outputs) + "+synthesis",
+            model=self.session.model,
+            mode="subsystem",
+            findings_summary=(
+                f"{len(outputs)} subsystems: "
+                + ", ".join(
+                    f"{o['subsystem']}({o['prism']})"
+                    for o in outputs)),
+        )
+
+    @staticmethod
+    def _extract_questions_with_tiers(prereq_output):
+        """Extract questions WITH tier tags from prereq output.
+
+        Returns list of (question, tier) tuples where tier is
+        'T1', 'T2', 'T3', or None. T1 = verifiable from docs,
+        T2 = needs composition, T3 = needs runtime context.
+        """
+        import re as _re_tier
+        if not prereq_output:
+            return []
+
+        results = []
+        _tag_pat = (r'(?:\s*\[(?:HIGH|MEDIUM|LOW|FACT|REFERENCE|'
+                    r'TROUBLESHOOTING|METHODOLOGY|EXPLANATION|'
+                    r'DECISION|T1|T2|T3)\])*')
+
+        for line in prereq_output.split("\n"):
+            line = line.strip()
+            # Match numbered or bullet items
+            m = _re_tier.match(
+                r'^\d+\.\s*(.+)$|^[-*]\s*(.+)$', line)
+            if not m:
+                continue
+            text = (m.group(1) or m.group(2)).strip()
+            if "?" not in text or len(text) < 15:
+                continue
+
+            # Extract tier
+            tier = None
+            tier_m = _re_tier.search(r'\[(T[123])\]', text)
+            if tier_m:
+                tier = tier_m.group(1)
+                text = text.replace(
+                    tier_m.group(0), "").strip()
+
+            # Strip other tags
+            text = _re_tier.sub(
+                r'\[(?:HIGH|MEDIUM|LOW|FACT|REFERENCE|'
+                r'TROUBLESHOOTING|METHODOLOGY|EXPLANATION|'
+                r'DECISION)\]', "", text).strip().strip("*")
+
+            if text and len(text) > 15:
+                results.append((text, tier))
+
+        # Dedup
+        seen = set()
+        unique = []
+        for q, t in results:
+            lower = q.lower()
+            if lower not in seen:
+                seen.add(lower)
+                unique.append((q, t))
+        return unique[:50]
+
+    @staticmethod
+    def _extract_questions_from_prereq(prereq_output):
+        """Extract atomic questions from prereq prism output.
+
+        Shared by _run_prereq and _run_smart. Returns plain
+        question strings (strips tier tags).
+        """
+        tiered = PrismREPL._extract_questions_with_tiers(
+            prereq_output)
+        return [q for q, t in tiered]
+        for q in questions:
+            lower = q.lower()
+            if lower not in seen:
+                seen.add(lower)
+                unique.append(q)
+        return unique[:50]
+
+    def _run_prereq(self, content, file_name, general=False):
+        """Prereq: identify knowledge prerequisites for a task.
+
+        Runs prereq prism → extracts atomic questions → batch queries
+        AgentsKB → returns task + knowledge context.
+        """
+        print(f"\n{C.BOLD}{C.BLUE}── Prerequisites ── "
+              f"{file_name} ──{C.RESET}")
+        print(f"  {C.DIM}Phase 1: Identify knowledge gaps. "
+              f"Phase 2: Batch query AgentsKB.{C.RESET}")
+
+        saved_model = self.session.model
+
+        # Phase 1: Run prereq prism
+        print(f"\n{C.BOLD}Phase 1: Knowledge prerequisite "
+              f"scan{C.RESET}")
+        _prereq_model = self._get_prism_model(
+            "prereq") or "sonnet"
+        self.session.model = MODEL_MAP.get(
+            _prereq_model, _prereq_model)
+        prereq_output = self._run_single_prism_streaming(
+            "prereq", content, file_name, general=True)
+        self.session.model = saved_model
+
+        if not prereq_output or not prereq_output.strip():
+            print(f"{C.RED}Prereq scan returned empty{C.RESET}")
+            return
+
+        # Phase 2: Extract questions from output
+        print(f"\n{C.BOLD}Phase 2: Extracting atomic "
+              f"questions{C.RESET}")
+        _tiered = self._extract_questions_with_tiers(
+            prereq_output)
+        _questions = [q for q, t in _tiered]
+
+        # Report tier distribution
+        _t1 = [q for q, t in _tiered if t == "T1"]
+        _t2 = [q for q, t in _tiered if t == "T2"]
+        _t3 = [q for q, t in _tiered if t == "T3"]
+        _untagged = [q for q, t in _tiered if t is None]
+        print(f"  {C.DIM}Found {len(_questions)} questions"
+              f"{C.RESET}")
+        if _t1 or _t2 or _t3:
+            print(f"  {C.DIM}  T1 (verifiable): {len(_t1)}"
+                  f"  T2 (composite): {len(_t2)}"
+                  f"  T3 (frontier): {len(_t3)}"
+                  f"  untagged: {len(_untagged)}{C.RESET}")
+        if _t3:
+            print(f"  {C.YELLOW}T3 questions are "
+                  f"confabulation risk zones — models "
+                  f"will guess answers for these."
+                  f"{C.RESET}")
+
+        if not _questions:
+            print(f"  {C.YELLOW}No questions extracted."
+                  f"{C.RESET}")
+            self._save_deep_finding(
+                file_name, "prereq", prereq_output)
+            return
+
+        # Phase 3: Batch query AgentsKB
+        # Prioritize T1 questions (highest hit rate)
+        _query_order = (_t1 + _untagged + _t2)[:30]
+        if not _query_order:
+            _query_order = _questions[:30]
+
+        print(f"\n{C.BOLD}Phase 3: Querying AgentsKB "
+              f"({len(_query_order)} questions, "
+              f"T1-priority){C.RESET}")
+        _answered = self._batch_query_agentskb(
+            _query_order)
+        _answered_count = len(_answered)
+        _total = len(_questions)
+        _ratio = (_answered_count / len(_query_order) * 100
+                  if _query_order else 0)
+        print(f"  {C.DIM}Answered: {_answered_count}/"
+              f"{len(_query_order)} ({_ratio:.0f}%)"
+              f"{C.RESET}")
+        if _ratio < 20:
+            print(f"  {C.YELLOW}Low coverage ({_ratio:.0f}%)"
+                  f" — this tech stack may not be in "
+                  f"AgentsKB yet.{C.RESET}")
+
+        # Build knowledge context
+        _context_parts = []
+        for a in _answered:
+            _context_parts.append(
+                f"Q: {a['question']}\n"
+                f"A: {a['answer']}\n"
+                f"Source: {', '.join(a.get('sources', ['agentskb']))}")
+        _knowledge = "\n\n".join(_context_parts)
+
+        _unanswered = [
+            q for q in _questions
+            if q not in {a["question"] for a in _answered}]
+
+        # Save combined output with tier breakdown
+        _tier_summary = ""
+        if _t1 or _t2 or _t3:
+            _tier_summary = (
+                f"\n\n## TIER BREAKDOWN\n"
+                f"- T1 (verifiable): {len(_t1)} questions\n"
+                f"- T2 (composite): {len(_t2)} questions\n"
+                f"- T3 (frontier/confabulation risk): "
+                f"{len(_t3)} questions\n"
+                f"- Answer ratio: {_ratio:.0f}% "
+                f"({_answered_count}/{len(_query_order)})\n")
+            if _t3:
+                _tier_summary += (
+                    "\nT3 CONFABULATION RISKS:\n"
+                    + "\n".join(f"- {q}" for q in _t3[:10])
+                    + "\n")
+
+        combined = (
+            f"## PREREQUISITE SCAN\n\n{prereq_output}\n\n"
+            f"---\n\n"
+            f"## KNOWLEDGE BASE ANSWERS "
+            f"({_answered_count}/{_total})\n\n"
+            f"{_knowledge or '(no answers found)'}\n\n"
+            f"---\n\n"
+            f"## UNANSWERED ({len(_unanswered)})\n\n"
+            + ("\n".join(f"- {q}" for q in _unanswered)
+               if _unanswered else "(all answered)")
+            + _tier_summary)
+        self._save_deep_finding(
+            file_name, "prereq", combined)
+
+        print(f"\n{C.GREEN}Prereq complete: "
+              f"{_answered_count}/{_total} questions "
+              f"answered{C.RESET}")
+        if _unanswered:
+            print(f"  {C.YELLOW}{len(_unanswered)} "
+                  f"unanswered — these need manual "
+                  f"research{C.RESET}")
+
+        self._session_log.append(
+            operation="prereq",
+            file_name=file_name,
+            lens="prereq+agentskb",
+            model=self.session.model,
+            mode="prereq",
+            findings_summary=(
+                f"{_answered_count}/{_total} answered"),
+        )
 
     def _run_verified_pipeline(self, content, file_name,
                                general=False):
@@ -6949,17 +8413,39 @@ class PrismREPL:
                   f"{gap_json.count('claim')}"
                   f" knowledge gaps found{C.RESET}")
 
-        # Step 4: Re-run L12 with gap context
+        # Step 3b: J7 — Fill gaps via AgentsKB (free, no auth)
+        _agentskb_facts = ""
+        if gap_json:
+            print(f"\n{C.BOLD}Step 3b: Filling gaps via "
+                  f"AgentsKB{C.RESET}")
+            _filled = self._fill_gaps_agentskb(gap_json)
+            if _filled:
+                _agentskb_facts = "\n".join(
+                    f"- VERIFIED: {f['claim']} → {f['answer']} "
+                    f"[source: {f['source']}]"
+                    for f in _filled)
+                print(f"  {C.DIM}Filled {len(_filled)} gaps "
+                      f"via AgentsKB{C.RESET}")
+            else:
+                print(f"  {C.DIM}No gaps filled (topics "
+                      f"not covered){C.RESET}")
+
+        # Step 4: Re-run L12 with gap context + filled facts
         print(f"\n{C.BOLD}Step 4/4: Re-analysis with gap "
               f"awareness{C.RESET}")
+        _facts_section = gap_json or "No gaps extracted."
+        if _agentskb_facts:
+            _facts_section += (
+                "\n\nVERIFIED FACTS (from AgentsKB — "
+                "treat as authoritative):\n"
+                + _agentskb_facts)
         verified_context = (
-            "<verified_knowledge>\n"
-            "The following knowledge gaps were detected in "
-            "the initial analysis. For each gap, either "
-            "verify the claim from the source code or mark "
-            "it UNVERIFIABLE and exclude it from your "
-            "conclusions.\n\n"
-            f"{gap_json or 'No gaps extracted.'}\n"
+            "<verified_knowledge source=\"GAP-ANALYSIS\">\n"
+            "Knowledge gaps detected in initial analysis. "
+            "Items marked [KB-FACT] are ground truth. "
+            "Unresolved gaps: verify from source or mark "
+            "UNVERIFIABLE.\n\n"
+            f"{_facts_section}\n"
             "</verified_knowledge>\n\n"
             f"{content}")
         self.session.model = MODEL_MAP.get(l12_model, l12_model)
@@ -7006,6 +8492,42 @@ class PrismREPL:
             mode="verified",
         )
 
+    def _discover_available_tools(self):
+        """Meta: discover available prisms from disk at runtime.
+
+        Reads prisms/ directory, extracts name + description from
+        YAML frontmatter. The strategist uses this to know ALL
+        available tools without hardcoding. New prisms are
+        automatically discovered.
+        """
+        import re as _re_disc
+        prisms_dir = self.working_dir / "prisms"
+        if not prisms_dir.exists():
+            return ""
+        lines = []
+        for p in sorted(prisms_dir.glob("*.md")):
+            try:
+                text = p.read_text(encoding="utf-8",
+                                   errors="replace")
+                if not text.startswith("---"):
+                    continue
+                yaml = text.split("---")[1]
+                name = _re_disc.search(
+                    r'name:\s*(.+)', yaml)
+                desc = _re_disc.search(
+                    r'description:\s*["\']?(.+?)["\']?\s*$',
+                    yaml, _re_disc.MULTILINE)
+                model = _re_disc.search(
+                    r'optimal_model:\s*(\w+)', yaml)
+                if name and desc:
+                    _n = name.group(1).strip()
+                    _d = desc.group(1).strip()[:100]
+                    _m = model.group(1) if model else "?"
+                    lines.append(f"- {_n} [{_m}]: {_d}")
+            except (OSError, UnicodeDecodeError):
+                continue
+        return "\n".join(lines) if lines else ""
+
     def _run_strategist(self, content, file_name, general=False):
         """Strategist: 2-call meta-agent (plan + adversarial critique).
 
@@ -7034,12 +8556,65 @@ class PrismREPL:
             print(f"{C.RED}Strategist prism not found"
                   f"{C.RESET}")
             self.session.model = saved_model
+
+        # Meta: strategist discovers its own tools from disk
+        # instead of relying only on its static list.
+        _discovered = self._discover_available_tools()
+        if _discovered:
+            strategist_prompt += (
+                "\n\nDISCOVERED TOOLS (auto-detected from "
+                "prisms/ directory — may include tools not "
+                "listed above):\n" + _discovered)
             return
+
+        # Build dynamic context so strategist knows the ACTUAL state
+        _dyn_ctx = ""
+        try:
+            import json as _json_strat
+            # Prior scans (from profile)
+            _prof_path = (self.working_dir / ".deep"
+                          / "profile.json")
+            if _prof_path.exists():
+                _prof = _json_strat.loads(
+                    _prof_path.read_text(encoding="utf-8"))
+                _sc = _prof.get("scan_count", 0)
+                _laws = _prof.get("conservation_laws", [])
+                _dyn_ctx += (
+                    f"\nPRIOR ANALYSIS STATE:\n"
+                    f"- {_sc} prior scans on this codebase\n"
+                    f"- Conservation laws found: "
+                    f"{_laws[:3] if _laws else 'none yet'}\n")
+            # False positives (from learning)
+            _learn_path = (self.working_dir / ".deep"
+                           / "learning.json")
+            if _learn_path.exists():
+                _learn = _json_strat.loads(
+                    _learn_path.read_text(encoding="utf-8"))
+                _fps = [e for e in _learn
+                        if e.get("type") in (
+                            "false_positive", "rejected_fix")]
+                if _fps:
+                    _dyn_ctx += (
+                        f"- Known false positives: "
+                        f"{[e.get('issue','') for e in _fps[-3:]]}\n")
+            # KB coverage
+            _kb_stem = self._discover_cache_key(file_name)
+            _kb_path = (self.working_dir / ".deep"
+                        / "knowledge" / f"{_kb_stem}.json")
+            if _kb_path.exists():
+                _kb = _json_strat.loads(
+                    _kb_path.read_text(encoding="utf-8"))
+                _dyn_ctx += (
+                    f"- Knowledge base: {len(_kb)} verified "
+                    f"facts for this file\n")
+        except Exception:
+            pass
 
         plan_input = (
             f"GOAL: {goal}\n\n"
             f"TARGET: {file_name} "
             f"({'non-code text' if general else 'source code'})"
+            f"{_dyn_ctx}"
             f"\n\nTARGET PREVIEW (first 2000 chars):\n"
             f"{content[:2000]}")
 
@@ -10505,6 +12080,9 @@ def main():
     ap.add_argument("--intent", default=None, metavar="GOAL",
                     help="custom analytical direction for cook step "
                          "(same concept as target= in /scan)")
+    ap.add_argument("--cooker", default=None, metavar="NAME",
+                    help="override cooker template (e.g. simulation, "
+                         "archaeology). Used with target= or 3way.")
     ap.add_argument("--validate", action="store_true",
                     help="post-hoc quality check: score output depth "
                          "and actionability (EVALUATE primitive)")
@@ -11959,6 +13537,14 @@ def main():
     # ── --scan: non-interactive /scan ────────────────────────────────
     if args.scan:
         scan_arg = args.scan
+        # --pipe: replace "-" with stdin content for text-mode scan
+        if (getattr(args, 'pipe', False)
+                and scan_arg.strip().startswith("-")):
+            _stdin_text = sys.stdin.read().strip()
+            if _stdin_text:
+                # Replace leading "-" with quoted stdin content
+                scan_arg = (f'"{_stdin_text}"'
+                            + scan_arg.strip()[1:])
         # Wire --explain to explain mode (B12)
         if getattr(args, 'explain', False):
             args.mode = "explain"
@@ -11987,6 +13573,9 @@ def main():
         # Wire --intent into target= syntax so it works with --scan
         if getattr(args, 'intent', None) and 'target=' not in scan_arg:
             scan_arg += f' target="{args.intent}"'
+        # Wire --cooker into cooker= syntax
+        if getattr(args, 'cooker', None) and 'cooker=' not in scan_arg:
+            scan_arg += f' cooker="{args.cooker}"'
         # Wire --use-prism into prism= syntax (or raw prompt override)
         if getattr(args, 'use_prism', None) and 'prism=' not in scan_arg:
             _prism_val = args.use_prism

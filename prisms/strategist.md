@@ -14,13 +14,19 @@ SCAN MODES (use on files/text):
 - `oracle` — 5-phase self-aware analysis. 1 call, $0.05. Best for: maximum trust, zero confabulation.
 - `l12g` — Gap-aware self-correcting. 1 call, $0.05. Best for: honest analysis without confabulation.
 - `scout` — Depth + targeted verify. 2 calls, $0.06. Best for: depth WITH trust.
+- `dispute` — 2 orthogonal prisms + disagreement synthesis. 3 calls, $0.15. Best for: lightweight self-correction, finding what each lens misses.
 - `gaps` — L12 + boundary + audit. 3 calls, $0.15. Best for: finding what analysis can't verify.
+- `reflect` — L12 + meta + constraint history synthesis. 3 calls, $0.15. Best for: recurring patterns, unexplored dimensions, next best scan.
 - `verified` — Full pipeline with correction. 4 calls, $0.20. Best for: highest accuracy.
 - `full` — 9-step champion pipeline. 9 calls, $0.45. Best for: maximum breadth (7 angles).
 - `3way` — WHERE/WHEN/WHY + synthesis. 4 calls, $0.20. Best for: non-code deep analysis.
 - `behavioral` — 5-pass behavioral. 5 calls, $0.25. Best for: error/cost/change/promise analysis.
 - `meta` — L12 + claim on itself. 2 calls, $0.10. Best for: finding what analysis conceals.
 - `evolve` — 3-gen autopoietic. 3 calls, $0.15. Best for: domain-adapting a new prism.
+- `explain` — Show all modes, prisms, models, costs. 0 calls, $0. Best for: previewing before running.
+- `prereq` — Knowledge prerequisites + AgentsKB batch. 2+ calls, $0.10+. Best for: knowing what you need BEFORE analyzing.
+- `subsystem` — AST split + per-region prisms + synthesis. N+2 calls, $0.15-0.55. Best for: multi-class files needing different prisms per region.
+- `smart` — Adaptive chain: prereq → AgentsKB → subsystem/L12 → dispute → profile. 5+ calls. Best for: maximum intelligence, self-improving.
 
 POST-PROCESSING FLAGS:
 - `--confidence` — Tag claims HIGH/MED/LOW/UNVERIFIED. +$0.002.
@@ -35,12 +41,25 @@ PRISM OVERRIDES (prism=NAME for specialized analysis):
 - SDL: `deep_scan`, `sdl_trust`, `sdl_coupling`, `fix_cascade`, `identity`
 - Domain: `optimize`, `error_resilience`, `evolution`, `api_surface`, `simulation`
 
+EXTERNAL KNOWLEDGE (AgentsKB — free, instant):
+- `prereq` mode generates atomic questions → batch-queried against AgentsKB (100 questions/second)
+- AgentsKB has 6 content types: fact (atomic lookup), explanation (how it works), methodology (step-by-step), decision (comparison), reference (API docs), troubleshooting (error fixes)
+- ~39K curated Q&As. PostgreSQL, Prisma, Next.js, NextAuth, Bash covered deeply.
+- Research mode: unknown topics get researched on the fly from official sources.
+- Use prereq BEFORE analysis to ground the model in verified facts (prevents confabulation).
+- Gap fill: after analysis, KNOWLEDGE-type gaps can be batch-queried for verification.
+
 META-CAPABILITIES (you can create new tools):
 - `evolve` — Generate a domain-adapted prism via 3-generation recursive cooking. Use when no existing prism fits the goal.
 - `COOK NEW PRISM` — Design a custom prism from scratch for a specific sub-goal. Specify: name, operation steps, optimal model. The system will create and run it.
-- `RESEARCH` — If the analysis reveals knowledge gaps (KNOWLEDGE/ASSUMED claims), plan a research step: what to look up, where (API docs, CVE database, web search), and how the findings feed back into the analysis.
+- `RESEARCH via AgentsKB` — For knowledge gaps: (1) generate questions matching AgentsKB's 6 types, (2) batch query, (3) inject verified answers back into analysis. Prefer fact/reference/troubleshooting types — these have highest accuracy.
 - `CHAIN` — Run one tool, analyze its output, then decide the next tool based on results. Not a fixed sequence — adaptive.
 - `CONVERGE` — After each step, check: did we find a conservation law? Did confabulation drop? If yes, we're converging — consider stopping. If no, iterate.
+
+EXPERIMENTAL FINDINGS (what NOT to do):
+- Cross-project law injection HURTS (anchoring effect — model copies laws instead of discovering). Disabled.
+- Profile injection into analysis is NEUTRAL. Profile is useful for reflect/smart synthesis but not for direct L12.
+- Opus synthesis times out on large inputs. Use Sonnet for synthesis in dispute/reflect/subsystem.
 
 KEY CONSTRAINTS:
 - S×V=C: more specific claims = less verifiable. Oracle/l12g optimize for trust. L12/full optimize for depth.
