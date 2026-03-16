@@ -219,6 +219,39 @@ STATIC_CODE_PIPELINE = [
     {"prism": "l12_synthesis", "role": "SYNTHESIS", "chain": True},
 ]
 
+# B10: Dispute synthesis — compare disagreements between two prisms
+DISPUTE_SYNTHESIS_PROMPT = (
+    "You receive two independent structural analyses of the same code, "
+    "produced by different analytical lenses.\n\n"
+    "Your task: identify ONLY the points where they DISAGREE or see "
+    "different things.\n\n"
+    "For each disagreement:\n"
+    "1. State what Lens A found\n"
+    "2. State what Lens B found\n"
+    "3. Explain why they diverge (different assumptions, different scope, "
+    "genuine contradiction)\n"
+    "4. Judge which is more likely correct, with reasoning\n"
+    "5. Name what NEITHER lens saw — the blind spot their disagreement "
+    "reveals\n\n"
+    "Do NOT list agreements. Do NOT summarize each analysis. "
+    "Focus exclusively on divergence and the structural reasons for it.\n\n"
+    "End with: the single most important insight that only emerges from "
+    "comparing these two analyses."
+)
+
+# B9: Impact prediction before applying patches
+IMPACT_PREDICT_PROMPT = (
+    "You are reviewing a proposed code fix. Given the original code and "
+    "the proposed change:\n\n"
+    "1. List every function/method that calls or is called by the changed code\n"
+    "2. Identify edge cases that might break after this change\n"
+    "3. List invariants this code preserves — will the fix break any?\n"
+    "4. Rate overall risk: LOW (isolated change) / MEDIUM (touches shared "
+    "state) / HIGH (affects control flow or public API)\n"
+    "5. Suggest one test that would catch a regression from this fix\n\n"
+    "Be specific. Reference actual function names and code paths."
+)
+
 # FALLBACK PROMPT METADATA: Tuned for claude-sonnet-4-6, claude-haiku-4-5-20251001
 # Calibration date: 2026-03-05. If model changes, this prompt may degrade (15-30% quality loss).
 # Tests: Starlette (11 bugs, 333 LOC), Click (9 bugs, 417 LOC), Tenacity (8 bugs, 331 LOC).
@@ -2430,6 +2463,7 @@ class PrismREPL:
             "/status":    {"handler": self._cmd_status,     "help": "Dashboard: last scan age, open issues, cooked prisms", "args": "",                                            "category": "info"},
             "/reload":    {"handler": self._cmd_reload_cmd, "help": "Hot-reload prism.py + prisms without restarting",   "args": "",                                              "category": "session"},
             "/force-confirm": {"handler": self._cmd_force_confirm, "help": "Toggle: prompt before auto-reading files even in chat mode", "args": "",                              "category": "session"},
+            "/kb":        {"handler": self._cmd_kb,          "help": "Knowledge base: list verified facts, clear, show entries for a file", "args": "[list|clear|<file>]",                          "category": "info"},
         }
         self._commands.update(cmds)
 
@@ -2439,6 +2473,80 @@ class PrismREPL:
         """Print bye and signal loop exit."""
         print(f"{C.DIM}bye{C.RESET}")
         return False
+
+    def _cmd_kb(self, arg):
+        """J10: Manage the persistent knowledge base (.deep/knowledge/).
+
+        /kb           — list all files with KB entries
+        /kb <file>    — show entries for a specific file
+        /kb clear     — clear all KB entries
+        """
+        import json as _json_kb_cmd
+
+        kb_dir = self.working_dir / ".deep" / "knowledge"
+        if not kb_dir.exists():
+            print(f"{C.DIM}No knowledge base yet. "
+                  f"Run /scan file verified or /scan file gaps "
+                  f"to populate.{C.RESET}")
+            return
+
+        arg = arg.strip()
+
+        if arg == "clear":
+            import shutil
+            shutil.rmtree(kb_dir, ignore_errors=True)
+            print(f"{C.GREEN}Knowledge base cleared{C.RESET}")
+            return
+
+        kb_files = sorted(kb_dir.glob("*.json"))
+        if not kb_files:
+            print(f"{C.DIM}Knowledge base is empty.{C.RESET}")
+            return
+
+        if not arg or arg == "list":
+            # List all KB files with entry counts
+            print(f"\n{C.BOLD}Knowledge Base "
+                  f"(.deep/knowledge/){C.RESET}")
+            total = 0
+            for kf in kb_files:
+                try:
+                    entries = _json_kb_cmd.loads(
+                        kf.read_text(encoding="utf-8"))
+                    n = len(entries) if isinstance(entries, list) else 0
+                    total += n
+                    print(f"  {kf.stem}: {n} entries")
+                except (ValueError, OSError):
+                    print(f"  {kf.stem}: (corrupt)")
+            print(f"\n  {C.DIM}Total: {total} entries across "
+                  f"{len(kb_files)} files{C.RESET}")
+            return
+
+        # Show entries for a specific file
+        stem = self._discover_cache_key(arg)
+        kb_path = kb_dir / f"{stem}.json"
+        if not kb_path.exists():
+            print(f"{C.YELLOW}No KB entries for "
+                  f"'{arg}'{C.RESET}")
+            return
+
+        try:
+            entries = _json_kb_cmd.loads(
+                kb_path.read_text(encoding="utf-8"))
+            if not isinstance(entries, list):
+                entries = []
+        except (ValueError, OSError):
+            print(f"{C.RED}KB file corrupt{C.RESET}")
+            return
+
+        print(f"\n{C.BOLD}KB: {arg} ({len(entries)} entries)"
+              f"{C.RESET}")
+        for i, e in enumerate(entries, 1):
+            claim = e.get("claim", "?")
+            conf = e.get("confidence", "?")
+            src = e.get("source", "?")
+            verified = "verified" if e.get("verified") else "unverified"
+            print(f"  {i}. [{conf}] {claim}")
+            print(f"     {C.DIM}{src} — {verified}{C.RESET}")
 
     def _cmd_help(self, arg):
         """Show help text. /help full for all examples."""
@@ -2888,6 +2996,69 @@ class PrismREPL:
             if "Analytical constraints:" not in _existing:
                 findings_path.write_text(
                     _existing + _constraint, encoding="utf-8")
+
+        # B4 Phase 2: Persist constraint history
+        # Append structured entry to .deep/constraint_history.md
+        # for cross-scan learning. Called within _save_deep_finding
+        # so findings_lock is already released — use simple append.
+        try:
+            import datetime as _dt_b4
+            _hist_path = self.working_dir / ".deep" / "constraint_history.md"
+            _hist_path.parent.mkdir(parents=True, exist_ok=True)
+            _ts = _dt_b4.datetime.now().strftime("%Y-%m-%d %H:%M")
+            _entry = (
+                f"\n### {_ts} — {prism_name} on {file_name} "
+                f"({self.session.model})\n"
+                f"- **Prism**: {prism_name}\n"
+                f"- **Model**: {self.session.model}\n"
+                f"- **Target**: {file_name}\n"
+                f"- **Constraint**: S×V=C applies\n"
+                f"---\n")
+            with open(_hist_path, "a", encoding="utf-8") as _hf:
+                _hf.write(_entry)
+        except (OSError, PermissionError):
+            pass  # Best-effort — never crash on history write
+
+    def _record_learning(self, event_type, data):
+        """Record a learning event to .deep/learning.json.
+
+        B4 Phase 3: Track accepted/rejected fixes, false positives,
+        and style constraints for cross-scan learning memory.
+
+        event_type: 'accepted_fix', 'rejected_fix', 'false_positive',
+                    'style_constraint'
+        data: dict with context (issue title, file, reason, etc.)
+        """
+        try:
+            import json as _json_learn
+            import datetime as _dt_learn
+            _learn_path = self.working_dir / ".deep" / "learning.json"
+            _learn_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Load existing entries
+            _entries = []
+            if _learn_path.exists():
+                try:
+                    _raw = _learn_path.read_text(encoding="utf-8")
+                    _entries = _json_learn.loads(_raw)
+                    if not isinstance(_entries, list):
+                        _entries = []
+                except (ValueError, OSError):
+                    _entries = []
+
+            # Build new entry
+            _entry = {
+                "type": event_type,
+                "date": _dt_learn.datetime.now().strftime("%Y-%m-%d"),
+            }
+            _entry.update(data)
+
+            _entries.append(_entry)
+            _learn_path.write_text(
+                _json_learn.dumps(_entries, indent=2, ensure_ascii=False),
+                encoding="utf-8")
+        except (OSError, PermissionError):
+            pass  # Best-effort — never crash on learning write
 
     def _get_active_file_content(self):
         """Return current content of the active file, re-reading from disk if possible.
@@ -4295,8 +4466,14 @@ class PrismREPL:
         elif len(parts) >= 2 and parts[-1] == "3way":
             result["mode"] = "3way"
             result["arg"] = " ".join(parts[:-1])
-        elif len(parts) >= 2 and parts[-1] in ("meta", "reflect"):
+        elif len(parts) >= 2 and parts[-1] == "meta":
             result["mode"] = "meta"
+            result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] == "reflect":
+            result["mode"] = "reflect"
+            result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] == "dispute":
+            result["mode"] = "dispute"
             result["arg"] = " ".join(parts[:-1])
         elif len(parts) >= 2 and parts[-1] == "verified":
             result["mode"] = "verified"
@@ -4319,14 +4496,18 @@ class PrismREPL:
         elif len(parts) >= 2 and parts[-1] == "strategist":
             result["mode"] = "strategist"
             result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] == "explain":
+            result["mode"] = "explain"
+            result["arg"] = " ".join(parts[:-1])
         elif len(parts) >= 2 and parts[-1] in (
                 "full", "discover"):
             result["mode"] = parts[-1]
             result["arg"] = " ".join(parts[:-1])
         elif len(parts) == 1 and parts[0] in (
                 "full", "discover", "expand", "behavioral", "3way",
-                "meta", "verified", "l12g", "gaps", "evolve",
-                "oracle", "scout", "strategist"):
+                "meta", "reflect", "dispute", "verified", "l12g",
+                "gaps", "evolve", "oracle", "scout", "strategist",
+                "explain"):
             result["mode"] = parts[0]
             result["arg"] = None
 
@@ -4336,7 +4517,7 @@ class PrismREPL:
         """/scan <file|text|dir> [mode] — structural analysis. See /help full."""
         if not arg:
             print(f"{C.YELLOW}Usage: /scan <file|dir|text> "
-                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|target=\"...\"|optimize=\"...\"]  "
+                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
                   f"{C.RESET}")
             return
 
@@ -4346,7 +4527,7 @@ class PrismREPL:
 
         if not arg:
             print(f"{C.YELLOW}Usage: /scan <file|dir|text> "
-                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|target=\"...\"|optimize=\"...\"]  "
+                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
                   f"{C.RESET}")
             return
 
@@ -4355,7 +4536,7 @@ class PrismREPL:
         # Defensive: ensure input_arg is a string before path operations
         if not isinstance(input_arg, str) or not input_arg.strip():
             print(f"{C.YELLOW}Usage: /scan <file|dir|text> "
-                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|target=\"...\"|optimize=\"...\"]  "
+                  f"[full|3way|behavioral|meta|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
                   f"{C.RESET}")
             return
 
@@ -4503,6 +4684,90 @@ class PrismREPL:
                                   f"facts from KB{C.RESET}")
                 except (ValueError, OSError):
                     pass  # KB corrupt or unreadable
+
+            # B4 Phase 2b: Inject prior analysis history
+            # Shows what prisms/models already analyzed this file,
+            # encouraging the model to explore uncovered dimensions.
+            try:
+                _hist_path = (self.working_dir / ".deep"
+                              / "constraint_history.md")
+                if _hist_path.exists():
+                    _hist_raw = _hist_path.read_text(encoding="utf-8")
+                    # Extract entries matching this file
+                    _hist_entries = []
+                    for _block in _hist_raw.split("\n### "):
+                        if not _block.strip():
+                            continue
+                        if name in _block:
+                            _hist_entries.append(
+                                "### " + _block.strip()
+                                if not _block.startswith("### ")
+                                else _block.strip())
+                    if _hist_entries:
+                        # Take last 3 entries
+                        _recent = _hist_entries[-3:]
+                        _summary = "\n".join(_recent)
+                        content = (
+                            f"<prior_analysis>\n"
+                            f"This file was previously analyzed "
+                            f"{len(_hist_entries)} times. "
+                            f"Key findings:\n"
+                            f"{_summary}\n"
+                            f"Consider exploring dimensions NOT "
+                            f"covered by prior analyses.\n"
+                            f"</prior_analysis>\n\n"
+                            f"{content}")
+                        print(f"  {C.DIM}Loaded "
+                              f"{len(_hist_entries)} prior "
+                              f"analyses{C.RESET}")
+            except (OSError, PermissionError):
+                pass  # Best-effort
+
+            # B4 Phase 3b: Inject learning memory
+            # Known false positives and rejected fixes prevent
+            # the model from repeating flagged non-issues.
+            try:
+                import json as _json_learn_scan
+                _learn_path = (self.working_dir / ".deep"
+                               / "learning.json")
+                if _learn_path.exists():
+                    _learn_data = _json_learn_scan.loads(
+                        _learn_path.read_text(encoding="utf-8"))
+                    if isinstance(_learn_data, list):
+                        # Filter for this file
+                        _file_events = [
+                            e for e in _learn_data
+                            if e.get("file", "") == name
+                            or name in e.get("file", "")]
+                        _negatives = [
+                            e for e in _file_events
+                            if e.get("type") in (
+                                "false_positive",
+                                "rejected_fix")]
+                        if _negatives:
+                            _items = "\n".join(
+                                f"- [{e.get('type')}] "
+                                f"{e.get('issue', '')} "
+                                f"{e.get('claim', '')} "
+                                f"— {e.get('reason', '')}"
+                                .strip()
+                                for e in _negatives[-10:])
+                            content = (
+                                f"<learning_context>\n"
+                                f"Known false positives for "
+                                f"this file:\n"
+                                f"{_items}\n"
+                                f"These patterns are intentional "
+                                f"design choices, not bugs.\n"
+                                f"</learning_context>\n\n"
+                                f"{content}")
+                            print(
+                                f"  {C.DIM}Loaded "
+                                f"{len(_negatives)} learning "
+                                f"events{C.RESET}")
+            except (ValueError, OSError, PermissionError):
+                pass  # Best-effort
+
             name = input_arg[:40] + ("..." if len(input_arg) > 40 else "")
 
         general = not is_file
@@ -4623,6 +4888,14 @@ class PrismREPL:
             elif mode == "scout":
                 self._run_scout(
                     content, name, general=general)
+            elif mode == "explain":
+                self._explain_scan(content, name, general=general)
+            elif mode == "reflect":
+                self._run_reflect(
+                    content, name, general=general)
+            elif mode == "dispute":
+                self._run_dispute(
+                    content, name, general=general)
             elif mode == "oracle":
                 print(f"\n{C.BOLD}{C.BLUE}── ORACLE ── "
                       f"{name} ──{C.RESET}")
@@ -4726,6 +4999,264 @@ class PrismREPL:
 
         if is_file:
             self._suggest_next("scan", {"file": name})
+
+    def _explain_scan(self, content, file_name, general=False):
+        """Explain what a scan would do without running it.
+
+        Shows available modes, which prisms each mode uses, estimated
+        cost, and a recommendation based on input characteristics.
+        """
+        # Input characteristics
+        lines = content.count('\n') + 1
+        words = len(content.split())
+        is_code = not general
+
+        # Check for existing KB data
+        has_kb = False
+        if file_name:
+            _kb_stem = self._discover_cache_key(file_name)
+            _kb_path = (self.working_dir / ".deep" / "knowledge"
+                        / f"{_kb_stem}.json")
+            has_kb = _kb_path.exists()
+
+        # Check for existing discover data
+        has_discover = False
+        if file_name:
+            _disc_path = (self.working_dir / ".deep"
+                          / f"discover_{self._discover_cache_key(file_name)}.json")
+            has_discover = _disc_path.exists()
+
+        # Header
+        print(f"\n{C.BOLD}{C.BLUE}── EXPLAIN ── "
+              f"{file_name} ──{C.RESET}")
+        print(f"  {C.DIM}Input: {'code' if is_code else 'text'}, "
+              f"{lines} lines, {words} words"
+              f"{', has KB data' if has_kb else ''}"
+              f"{', has discover cache' if has_discover else ''}"
+              f"{C.RESET}\n")
+
+        # Helper to get model display name
+        def _model_label(prism_name):
+            m = OPTIMAL_PRISM_MODEL.get(prism_name)
+            return m if m else "sonnet"
+
+        # ── Available modes ──
+        print(f"{C.BOLD}Available modes:{C.RESET}\n")
+
+        # 1. Default (single)
+        if is_code:
+            _l12_model = _model_label("l12")
+            print(f"  {C.GREEN}(default){C.RESET}  "
+                  f"{C.BOLD}Single L12{C.RESET}")
+            print(f"              L12 prism on {_l12_model}. "
+                  f"1 call, ~$0.05.")
+            print(f"              {C.DIM}Finds: conservation laws, "
+                  f"meta-laws, bug table.{C.RESET}")
+        else:
+            _m = self.session.model or ""
+            _is_sonnet = any(x in _m for x in ("sonnet", "opus"))
+            _prism = "l12_universal" if _is_sonnet else "deep_scan"
+            _pm = _model_label(_prism)
+            print(f"  {C.GREEN}(default){C.RESET}  "
+                  f"{C.BOLD}Single "
+                  f"{'l12_universal' if _is_sonnet else 'SDL'}"
+                  f"{C.RESET}")
+            print(f"              {_prism} prism on {_pm}. "
+                  f"1 call, ~$0.05.")
+            print(f"              {C.DIM}Finds: conservation laws, "
+                  f"structural properties.{C.RESET}")
+        print()
+
+        # 2. full
+        print(f"  {C.CYAN}full{C.RESET}        "
+              f"{C.BOLD}Full Pipeline{C.RESET}")
+        if is_code:
+            step_descs = []
+            for step in STATIC_CODE_PIPELINE:
+                m = _model_label(step["prism"])
+                step_descs.append(
+                    f"{step['role']} ({step['prism']}, {m})")
+            print(f"              "
+                  f"{len(STATIC_CODE_PIPELINE)}-step "
+                  f"pipeline, ~$0.50.")
+            print(f"              {C.DIM}Steps:{C.RESET}")
+            for i, desc in enumerate(step_descs, 1):
+                chain = STATIC_CODE_PIPELINE[i - 1].get(
+                    "chain", False)
+                marker = " [chained]" if chain else ""
+                print(f"              {C.DIM}  {i}. "
+                      f"{desc}{marker}{C.RESET}")
+        else:
+            print(f"              4-call WHERE/WHEN/WHY pipeline "
+                  f"(auto-cooked via COOK_3WAY). ~$0.30.")
+            print(f"              {C.DIM}Steps:{C.RESET}")
+            print(f"              {C.DIM}  1. Archaeology "
+                  f"— WHERE (structural layers){C.RESET}")
+            print(f"              {C.DIM}  2. Simulation "
+                  f"— WHEN (temporal prediction){C.RESET}")
+            print(f"              {C.DIM}  3. Structural "
+                  f"— WHY (conservation laws){C.RESET}")
+            print(f"              {C.DIM}  4. Synthesis "
+                  f"(cross-operation integration){C.RESET}")
+        print()
+
+        # 3. 3way
+        print(f"  {C.CYAN}3way{C.RESET}        "
+              f"{C.BOLD}3-Way Pipeline{C.RESET}")
+        print(f"              4-call WHERE/WHEN/WHY + synthesis. "
+              f"Auto-cooked from your input. ~$0.30.")
+        print(f"              {C.DIM}Cross-operation synthesis is "
+              f"inherently adversarial (no dedicated adversarial "
+              f"pass needed).{C.RESET}")
+        print()
+
+        # 4. behavioral
+        print(f"  {C.CYAN}behavioral{C.RESET}  "
+              f"{C.BOLD}Behavioral Pipeline{C.RESET}")
+        _beh_prisms = [
+            ("error_resilience", "ERRORS"),
+            ("optimize", "COSTS"),
+            ("fix_cascade", "ENTAILMENT"),
+            ("identity", "DISPLACEMENT"),
+        ]
+        print(f"              5-call pipeline "
+              f"(4 behavioral + synthesis). ~$0.35.")
+        print(f"              {C.DIM}Steps:{C.RESET}")
+        for prism_name, role in _beh_prisms:
+            m = _model_label(prism_name)
+            print(f"              {C.DIM}  - "
+                  f"{role} ({prism_name}, {m}){C.RESET}")
+        print(f"              {C.DIM}  - SYNTHESIS "
+              f"(behavioral_synthesis, "
+              f"{_model_label('behavioral_synthesis')})"
+              f"{C.RESET}")
+        print()
+
+        # 5. meta
+        print(f"  {C.CYAN}meta{C.RESET}        "
+              f"{C.BOLD}Meta Pipeline{C.RESET}")
+        print(f"              2-call: L12 -> claim prism on "
+              f"L12 output. ~$0.10.")
+        print(f"              {C.DIM}Finds what the analysis "
+              f"itself conceals.{C.RESET}")
+        print()
+
+        # 6. l12g
+        print(f"  {C.CYAN}l12g{C.RESET}        "
+              f"{C.BOLD}L12-G (gap-aware){C.RESET}")
+        print(f"              1-call: analyze -> audit -> "
+              f"self-correct ({_model_label('l12g')}). "
+              f"~$0.05.")
+        print(f"              {C.DIM}Zero confabulation, same "
+              f"cost as L12.{C.RESET}")
+        print()
+
+        # 7. oracle
+        print(f"  {C.CYAN}oracle{C.RESET}      "
+              f"{C.BOLD}Oracle{C.RESET}")
+        print(f"              1-call, 5-phase: depth -> type "
+              f"-> correct -> reflect -> harvest "
+              f"({_model_label('oracle')}). ~$0.07.")
+        print(f"              {C.DIM}Highest epistemic "
+              f"integrity. Max trust, single-pass.{C.RESET}")
+        print()
+
+        # 8. gaps
+        print(f"  {C.CYAN}gaps{C.RESET}        "
+              f"{C.BOLD}Gap Detection{C.RESET}")
+        print(f"              3-call: L12 + knowledge_boundary "
+              f"+ knowledge_audit. ~$0.15.")
+        print(f"              {C.DIM}Shows what NOT to trust "
+              f"in the analysis.{C.RESET}")
+        print()
+
+        # 9. verified
+        print(f"  {C.CYAN}verified{C.RESET}    "
+              f"{C.BOLD}Verified Analysis{C.RESET}")
+        print(f"              4-call: L12 -> gap detect -> "
+              f"extract -> re-run with corrections. "
+              f"~$0.20.")
+        print(f"              {C.DIM}Highest accuracy mode. "
+              f"Re-runs L12 with verified facts.{C.RESET}")
+        print()
+
+        # 10. scout
+        print(f"  {C.CYAN}scout{C.RESET}       "
+              f"{C.BOLD}Scout{C.RESET}")
+        print(f"              2-call: Oracle phases 1-2 -> "
+              f"targeted verify on flagged claims. "
+              f"~$0.12.")
+        print(f"              {C.DIM}Best trust-per-dollar "
+              f"after Oracle.{C.RESET}")
+        print()
+
+        # 11. discover
+        print(f"  {C.CYAN}discover{C.RESET}    "
+              f"{C.BOLD}Domain Discovery{C.RESET}")
+        print(f"              1-call: brainstorm analytical "
+              f"angles. ~$0.03.")
+        print(f"              {C.DIM}Follow with 'expand' to "
+              f"cook + run on discovered areas.{C.RESET}")
+        print()
+
+        # 12. fix (code only)
+        if is_code:
+            print(f"  {C.CYAN}fix{C.RESET}         "
+                  f"{C.BOLD}Fix Loop{C.RESET}")
+            print(f"              Scan -> extract bugs -> fix "
+                  f"-> re-scan. Interactive.")
+            print(f"              {C.DIM}Use 'fix auto' for "
+                  f"fully automatic mode.{C.RESET}")
+            print()
+
+        # 13. evolve
+        print(f"  {C.CYAN}evolve{C.RESET}      "
+              f"{C.BOLD}Evolve{C.RESET}")
+        print(f"              3-call: recursive meta-cooking "
+              f"to generate domain-adapted prism. ~$0.15.")
+        print(f"              {C.DIM}Saves evolved prism to "
+              f".deep/prisms/.{C.RESET}")
+        print()
+
+        # ── Recommendation ──
+        print(f"{C.BOLD}Recommendation:{C.RESET}\n")
+
+        if is_code:
+            if lines > 500:
+                rec_mode = "full"
+                rec_reason = (
+                    "Large file (>500 lines) benefits from "
+                    "multi-prism coverage")
+            elif has_kb:
+                rec_mode = "(default)"
+                rec_reason = (
+                    "KB data available — L12 will use "
+                    "verified facts for higher accuracy")
+            else:
+                rec_mode = "(default)"
+                rec_reason = (
+                    "Standard code file — L12 single scan "
+                    "gives 9.3 depth at ~$0.05")
+            print(f"  {C.GREEN}{C.BOLD}{rec_mode}{C.RESET}"
+                  f" — {rec_reason}")
+            if rec_mode == "(default)":
+                print(f"  {C.DIM}For deeper analysis: "
+                      f"/scan {file_name} full{C.RESET}")
+            if not has_kb:
+                print(f"  {C.DIM}For higher accuracy: "
+                      f"/scan {file_name} verified "
+                      f"(builds KB){C.RESET}")
+        else:
+            rec_mode = "(default)"
+            rec_reason = (
+                "Text input — single prism gives "
+                "structural analysis at minimal cost")
+            print(f"  {C.GREEN}{C.BOLD}{rec_mode}{C.RESET}"
+                  f" — {rec_reason}")
+            print(f"  {C.DIM}For deeper analysis: "
+                  f"/scan {file_name} 3way{C.RESET}")
+
+        print()
 
     def _cmd_expand(self, arg):
         """/expand <indices|*> [single|full] — cook + run prisms on discovered areas.
@@ -5853,6 +6384,217 @@ class PrismREPL:
                 f"Meta: {len(meta_output) if meta_output else 0}w"),
         )
 
+    def _run_reflect(self, content, file_name, general=False):
+        """Reflect: L12 → claim → cross-reference with constraint history.
+
+        B5: Like meta, but adds constraint history and learning memory
+        to produce a summary of recurring patterns and unexplored dimensions.
+        """
+        saved_model = self.session.model
+
+        # Phase 1: L12 structural analysis
+        print(f"\n{C.BOLD}{C.BLUE}── Phase 1: L12 structural "
+              f"analysis ── {file_name} ──{C.RESET}")
+        _l12_opt = self._get_prism_model("l12") or "sonnet"
+        self.session.model = MODEL_MAP.get(_l12_opt, _l12_opt)
+        l12_output = self._run_single_prism_streaming(
+            "l12", content, file_name, general=general)
+        self.session.model = saved_model
+
+        if not l12_output or not l12_output.strip():
+            print(f"{C.RED}L12 returned empty — cannot run "
+                  f"reflect{C.RESET}")
+            return
+
+        # Phase 2: Claim prism on L12 output (meta-analysis)
+        print(f"\n{C.BOLD}{C.BLUE}── Phase 2: Meta-analysis "
+              f"(claim prism on L12 output) ── {file_name} ──"
+              f"{C.RESET}")
+        _claim_opt = self._get_prism_model("claim") or "haiku"
+        self.session.model = MODEL_MAP.get(_claim_opt, _claim_opt)
+        meta_output = self._run_single_prism_streaming(
+            "claim", l12_output, file_name,
+            label=f"META ── {file_name}",
+            general=True)
+        self.session.model = saved_model
+
+        # Phase 3: Load constraint history and produce constraint summary
+        print(f"\n{C.BOLD}{C.BLUE}── Phase 3: Constraint "
+              f"synthesis ── {file_name} ──{C.RESET}")
+        history_text = ""
+        try:
+            _hist_path = (self.working_dir / ".deep"
+                          / "constraint_history.md")
+            if _hist_path.exists():
+                _raw = _hist_path.read_text(encoding="utf-8")
+                _entries = [b.strip() for b in _raw.split("\n### ")
+                            if file_name in b]
+                if _entries:
+                    history_text = (
+                        f"Prior analyses ({len(_entries)} total):\n"
+                        + "\n".join(
+                            "### " + e for e in _entries[-5:]))
+        except (OSError, PermissionError):
+            pass
+
+        learning_text = ""
+        try:
+            import json as _json_ref
+            _learn_path = (self.working_dir / ".deep"
+                           / "learning.json")
+            if _learn_path.exists():
+                _data = _json_ref.loads(
+                    _learn_path.read_text(encoding="utf-8"))
+                _file_events = [
+                    e for e in _data
+                    if isinstance(e, dict)
+                    and file_name in e.get("file", "")]
+                if _file_events:
+                    learning_text = (
+                        f"Learning events ({len(_file_events)}):\n"
+                        + "\n".join(
+                            f"- [{e.get('type')}] "
+                            f"{e.get('issue', e.get('claim', ''))}"
+                            for e in _file_events[-10:]))
+        except (ValueError, OSError):
+            pass
+
+        # Build synthesis input
+        synth_input = (
+            f"## L12 ANALYSIS\n\n{l12_output}\n\n---\n\n"
+            f"## META-ANALYSIS\n\n{meta_output or '(none)'}\n\n")
+        if history_text:
+            synth_input += f"---\n\n## PRIOR ANALYSES\n\n{history_text}\n\n"
+        if learning_text:
+            synth_input += f"---\n\n## LEARNING MEMORY\n\n{learning_text}\n\n"
+
+        synth_input += (
+            "---\n\n## TASK\n\n"
+            "Synthesize the above into a constraint summary:\n"
+            "1. What patterns RECUR across analyses?\n"
+            "2. What dimensions have NOT been explored yet?\n"
+            "3. What false positives or rejected advice should "
+            "future scans avoid?\n"
+            "4. What is the single most important unexplored "
+            "structural question about this code?")
+
+        _synth_model = self._get_prism_model(
+            "l12_synthesis") or "opus"
+        self.session.model = MODEL_MAP.get(
+            _synth_model, _synth_model)
+        synth_output = self._claude.call(
+            "You are a structural analyst synthesizing "
+            "prior analyses into actionable constraints.",
+            synth_input, model=_synth_model, timeout=120)
+        self.session.model = saved_model
+
+        if synth_output:
+            print(synth_output, flush=True)
+
+        # Save combined output
+        combined = (
+            f"## L12 STRUCTURAL ANALYSIS\n\n{l12_output}\n\n"
+            f"---\n\n"
+            f"## META-ANALYSIS\n\n{meta_output or '(none)'}\n\n"
+            f"---\n\n"
+            f"## CONSTRAINT SYNTHESIS\n\n"
+            f"{synth_output or '(none)'}")
+        self._save_deep_finding(file_name, "reflect", combined)
+
+        print(f"\n{C.GREEN}Reflect complete: L12 + meta + "
+              f"constraint synthesis{C.RESET}")
+
+        self._session_log.append(
+            operation="reflect",
+            file_name=file_name,
+            lens="l12+claim+synthesis",
+            model=self.session.model,
+            mode="reflect")
+
+    def _run_dispute(self, content, file_name, general=False):
+        """Dispute: run 2 orthogonal prisms, synthesize disagreements.
+
+        B10: Lightweight disagreement committee. Picks 2 prisms that
+        maximize divergence, runs both, then synthesizes ONLY where
+        they disagree. 3 calls for ~$0.15 — much of Full's
+        self-correction at a fraction of the cost.
+        """
+        # Select 2 orthogonal prisms based on content type
+        if general:
+            prism_a, prism_b = "l12_universal", "claim"
+        else:
+            # l12 + identity have highest pairwise uniqueness (10/10)
+            prism_a, prism_b = "l12", "identity"
+
+        print(f"\n{C.BOLD}{C.BLUE}── Dispute ── "
+              f"{file_name} ──{C.RESET}")
+        print(f"  {C.DIM}3-call: {prism_a} vs {prism_b} → "
+              f"disagreement synthesis{C.RESET}")
+
+        saved_model = self.session.model
+
+        # Run prism A
+        print(f"\n{C.BOLD}Lens A: {prism_a}{C.RESET}")
+        _a_model = self._get_prism_model(prism_a) or "sonnet"
+        self.session.model = MODEL_MAP.get(_a_model, _a_model)
+        output_a = self._run_single_prism_streaming(
+            prism_a, content, file_name,
+            label=f"LENS A ({prism_a}) ── {file_name}",
+            general=general)
+
+        # Run prism B
+        print(f"\n{C.BOLD}Lens B: {prism_b}{C.RESET}")
+        _b_model = self._get_prism_model(prism_b) or "sonnet"
+        self.session.model = MODEL_MAP.get(_b_model, _b_model)
+        output_b = self._run_single_prism_streaming(
+            prism_b, content, file_name,
+            label=f"LENS B ({prism_b}) ── {file_name}",
+            general=general)
+
+        self.session.model = saved_model
+
+        if not output_a or not output_b:
+            print(f"{C.RED}One or both prisms returned empty"
+                  f"{C.RESET}")
+            return
+
+        # Synthesis: focus on disagreements
+        print(f"\n{C.BOLD}{C.BLUE}── Disagreement Synthesis "
+              f"── {file_name} ──{C.RESET}")
+        synth_input = (
+            f"# SOURCE CODE\n\n{content}\n\n---\n\n"
+            f"# LENS A: {prism_a}\n\n{output_a}\n\n---\n\n"
+            f"# LENS B: {prism_b}\n\n{output_b}")
+
+        _synth_model = self._get_prism_model(
+            "l12_synthesis") or "opus"
+        self.session.model = MODEL_MAP.get(
+            _synth_model, _synth_model)
+        synth = self._claude.call(
+            DISPUTE_SYNTHESIS_PROMPT,
+            synth_input, model=_synth_model, timeout=120)
+        self.session.model = saved_model
+
+        if synth:
+            print(synth, flush=True)
+
+        # Save all outputs
+        combined = (
+            f"## LENS A: {prism_a}\n\n{output_a}\n\n---\n\n"
+            f"## LENS B: {prism_b}\n\n{output_b}\n\n---\n\n"
+            f"## DISAGREEMENT SYNTHESIS\n\n{synth or '(empty)'}")
+        self._save_deep_finding(file_name, "dispute", combined)
+
+        print(f"\n{C.GREEN}Dispute complete: {prism_a} vs "
+              f"{prism_b} → disagreements{C.RESET}")
+
+        self._session_log.append(
+            operation="dispute",
+            file_name=file_name,
+            lens=f"{prism_a}+{prism_b}+synthesis",
+            model=self.session.model,
+            mode="dispute")
+
     def _run_evolve(self, content, file_name, general=False):
         """Evolve: auto-generate domain-adapted prism via recursive cooking.
 
@@ -6039,6 +6781,27 @@ class PrismREPL:
               f"boundary + audit{C.RESET}")
         print(f"  {C.DIM}Findings: .deep/findings/{C.RESET}")
 
+        # J10: Extract gaps and save to persistent KB
+        # Same pattern as _run_verified_pipeline but without re-analysis
+        if boundary_output or audit_output:
+            gap_input = (f"{boundary_output or ''}\n\n---\n\n"
+                         f"{audit_output or ''}")
+            try:
+                gap_prompt = self._load_intent(
+                    "gap_extract_v2",
+                    "Extract every knowledge gap as a JSON array. "
+                    "For each: claim, type, fill_source, query, "
+                    "risk, impact, confidence.")
+                self.session.model = MODEL_MAP.get("haiku", "haiku")
+                gap_json = self._claude.call(
+                    gap_prompt, gap_input,
+                    model="haiku", timeout=60)
+                self.session.model = saved_model
+                if gap_json:
+                    self._save_gaps_to_kb(file_name, gap_json)
+            except Exception:
+                self.session.model = saved_model
+
         self._session_log.append(
             operation="gaps",
             file_name=file_name,
@@ -6046,6 +6809,78 @@ class PrismREPL:
             model=self.session.model,
             mode="gaps",
         )
+
+    def _save_gaps_to_kb(self, file_name, gap_json):
+        """J10: Save extracted gaps to persistent knowledge base.
+
+        Shared helper used by both gaps and verified pipelines.
+        Merges new entries with existing KB, deduplicates by claim.
+        """
+        try:
+            import json as _json_kb_save
+            import time as _time_kb_save
+            _kb_stem = self._discover_cache_key(file_name)
+            _kb_dir = self.working_dir / ".deep" / "knowledge"
+            _kb_dir.mkdir(parents=True, exist_ok=True)
+            _kb_path = _kb_dir / f"{_kb_stem}.json"
+
+            _gaps_raw = gap_json
+            if "```json" in _gaps_raw:
+                _gaps_raw = _gaps_raw.split("```json")[1].split("```")[0]
+            try:
+                _gaps = _json_kb_save.loads(_gaps_raw)
+            except (ValueError, TypeError):
+                _gaps = []
+
+            if isinstance(_gaps, list):
+                _now = _time_kb_save.time()
+                _ttl_map = {
+                    "API_DOCS": 7 * 86400,
+                    "CVE_DB": 30 * 86400,
+                    "CHANGELOG": 7 * 86400,
+                    "COMMUNITY": 30 * 86400,
+                    "BENCHMARK": 90 * 86400,
+                    "MARKET": 7 * 86400,
+                }
+                _kb_entries = []
+                for g in _gaps:
+                    if isinstance(g, dict) and g.get("claim"):
+                        _src = g.get("fill_source", "")
+                        _ttl = _ttl_map.get(_src, 30 * 86400)
+                        _kb_entries.append({
+                            "claim": g["claim"],
+                            "type": g.get("tier", g.get("type", "?")),
+                            "confidence": g.get("confidence", 0.5),
+                            "source": _src,
+                            "verified": False,
+                            "date": _now,
+                            "expires": _now + _ttl,
+                        })
+                if _kb_entries:
+                    # Load existing, deduplicate by claim text
+                    _existing = []
+                    if _kb_path.exists():
+                        try:
+                            _existing = _json_kb_save.loads(
+                                _kb_path.read_text(encoding="utf-8"))
+                        except (ValueError, TypeError):
+                            _existing = []
+                    _existing_claims = {
+                        e.get("claim", "") for e in _existing
+                        if isinstance(e, dict)}
+                    _new = [e for e in _kb_entries
+                            if e["claim"] not in _existing_claims]
+                    if _new:
+                        _existing.extend(_new)
+                        _kb_path.write_text(
+                            _json_kb_save.dumps(
+                                _existing, indent=2),
+                            encoding="utf-8")
+                        print(f"  {C.DIM}Saved {len(_new)} "
+                              f"facts to .deep/knowledge/"
+                              f"{_kb_stem}.json{C.RESET}")
+        except Exception:
+            pass  # KB save is best-effort
 
     def _run_verified_pipeline(self, content, file_name,
                                general=False):
@@ -6159,68 +6994,9 @@ class PrismREPL:
                   f"{C.RESET}")
         print(f"  {C.DIM}Findings: .deep/findings/{C.RESET}")
 
-        # J10: Save verified facts to persistent KB
+        # J10: Save verified facts to persistent KB (shared helper)
         if gap_json and file_name:
-            try:
-                import json as _json_kb_save
-                import time as _time_kb_save
-                _kb_stem = self._discover_cache_key(file_name)
-                _kb_dir = self.working_dir / ".deep" / "knowledge"
-                _kb_dir.mkdir(parents=True, exist_ok=True)
-                _kb_path = _kb_dir / f"{_kb_stem}.json"
-                # Parse gaps and create KB entries
-                _gaps_raw = gap_json
-                if "```json" in _gaps_raw:
-                    _gaps_raw = _gaps_raw.split("```json")[1].split("```")[0]
-                try:
-                    _gaps = _json_kb_save.loads(_gaps_raw)
-                except (ValueError, TypeError):
-                    _gaps = []
-                if isinstance(_gaps, list):
-                    _now = _time_kb_save.time()
-                    # TTL per gap type (K6c)
-                    _ttl_map = {
-                        "API_DOCS": 7 * 86400,      # 7 days
-                        "CVE_DB": 30 * 86400,        # 30 days
-                        "CHANGELOG": 7 * 86400,      # 7 days
-                        "COMMUNITY": 30 * 86400,     # 30 days
-                        "BENCHMARK": 90 * 86400,     # 90 days
-                        "MARKET": 7 * 86400,          # 7 days
-                    }
-                    _kb_entries = []
-                    for g in _gaps:
-                        if isinstance(g, dict) and g.get("claim"):
-                            _src = g.get("fill_source", "")
-                            _ttl = _ttl_map.get(_src, 30 * 86400)
-                            _kb_entries.append({
-                                "claim": g["claim"],
-                                "type": g.get("tier", g.get("type", "?")),
-                                "confidence": g.get("confidence", 0.5),
-                                "source": _src,
-                                "verified": False,
-                                "date": _now,
-                                "expires": _now + _ttl,
-                            })
-                    if _kb_entries:
-                        # Merge with existing KB
-                        _existing = []
-                        if _kb_path.exists():
-                            try:
-                                _existing = _json_kb_save.loads(
-                                    _kb_path.read_text(
-                                        encoding="utf-8"))
-                            except (ValueError, TypeError):
-                                _existing = []
-                        _existing.extend(_kb_entries)
-                        _kb_path.write_text(
-                            _json_kb_save.dumps(
-                                _existing, indent=2),
-                            encoding="utf-8")
-                        print(f"  {C.DIM}Saved {len(_kb_entries)}"
-                              f" facts to .deep/knowledge/"
-                              f"{_kb_stem}.json{C.RESET}")
-            except Exception:
-                pass  # KB save is best-effort
+            self._save_gaps_to_kb(file_name, gap_json)
 
         self._session_log.append(
             operation="verified",
@@ -8749,7 +9525,74 @@ class PrismREPL:
             # If git diff fails, warn but allow approval (conservative fallback)
             pass
 
-        return self._heal_prompt_approval(snapshots)
+        # B9: Impact prediction before approval (non-auto mode only)
+        if not getattr(self, "_auto_mode", False):
+            self._predict_fix_impact(snapshots, issue)
+
+        _approval = self._heal_prompt_approval(snapshots)
+
+        # B4 Phase 3: Record learning event from user approval/rejection
+        if _approval == "approved":
+            self._record_learning("accepted_fix", {
+                "issue": issue.get("title", ""),
+                "file": issue.get("file", ""),
+            })
+        elif _approval == "rejected":
+            self._record_learning("rejected_fix", {
+                "issue": issue.get("title", ""),
+                "file": issue.get("file", ""),
+            })
+
+        return _approval
+
+    def _predict_fix_impact(self, snapshots, issue):
+        """B9: Predict impact of a fix before approval.
+
+        Shows affected functions, edge cases, risk level, and
+        preserved invariants. Uses Haiku for speed (~$0.002).
+        """
+        # Build diff text
+        diff_parts = []
+        for filepath, original in snapshots.items():
+            path = pathlib.Path(filepath)
+            if not path.exists():
+                continue
+            current = path.read_text(encoding="utf-8", errors="replace")
+            if current != original:
+                orig_lines = original.splitlines(keepends=True)
+                curr_lines = current.splitlines(keepends=True)
+                diff = list(difflib.unified_diff(
+                    orig_lines, curr_lines,
+                    fromfile=f"a/{path.name}",
+                    tofile=f"b/{path.name}", lineterm=""))
+                if diff:
+                    diff_parts.append("\n".join(diff[:80]))
+
+        if not diff_parts:
+            return
+
+        diff_text = "\n\n".join(diff_parts)
+        title = issue.get("title", "unknown issue")
+
+        impact_input = (
+            f"## Issue being fixed\n{title}\n\n"
+            f"## Diff\n```\n{diff_text}\n```")
+
+        try:
+            print(f"\n  {C.DIM}Predicting impact...{C.RESET}",
+                  end="", flush=True)
+            impact = self._claude.call(
+                IMPACT_PREDICT_PROMPT, impact_input,
+                model="haiku", timeout=30)
+            if impact and impact.strip():
+                print()
+                print(f"  {C.BOLD}Impact prediction:{C.RESET}")
+                for line in impact.strip().split("\n")[:15]:
+                    print(f"  {C.DIM}{line}{C.RESET}")
+            else:
+                print(f" {C.DIM}(no prediction){C.RESET}")
+        except Exception:
+            print(f" {C.DIM}(skipped){C.RESET}")
 
     def _show_inline_diff(self, original, current, filename=""):
         """Show colored unified diff."""
@@ -9691,6 +10534,9 @@ def main():
                     help="oracle mode: 5-phase self-aware analysis "
                          "(depth + typing + correction + reflection + harvest). "
                          "Maximizes trust over impressiveness.")
+    ap.add_argument("--explain", action="store_true",
+                    help="explain what a scan would do without running it: "
+                         "show available modes, prisms, models, and costs")
     ap.add_argument("--provenance", action="store_true",
                     help="post-process: add source attribution per "
                          "finding (source:line_N, derivation, "
@@ -11113,6 +11959,9 @@ def main():
     # ── --scan: non-interactive /scan ────────────────────────────────
     if args.scan:
         scan_arg = args.scan
+        # Wire --explain to explain mode (B12)
+        if getattr(args, 'explain', False):
+            args.mode = "explain"
         # Wire --trust to oracle mode (R-P1)
         if getattr(args, 'trust', False):
             args.mode = "oracle"
