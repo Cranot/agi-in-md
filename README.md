@@ -51,17 +51,17 @@ Depth = how deep the analysis goes, scored 1-10. Naming a pattern is ~7. Derivin
 | Metric | Result |
 |--------|--------|
 | **Cost** | Single scan ~$0.05 (Sonnet), ~$0.01 with Haiku |
-| **Depth gain** | **9.8 avg vs 8.2 avg** on real code (Starlette, Click, Tenacity) |
+| **Depth gain** | **9.8 avg vs 8.2 avg** on real code (Starlette, Click, Tenacity) — AI-evaluated structural depth, not factual accuracy |
 | **Experiments** | **1,000+** raw outputs across 41 research rounds |
 | **Domains tested** | **20+** — code, math, philosophy, legal, medical, music, fiction, business, more |
 | **Hit rate** | **97%+** on construction-based analysis, **14/14** on full pipeline |
 | **Factual accuracy** | **97%** on planted-bug code, **~42%** on real production code — structural insights reliable, specific bug claims are hypotheses ([details](#accuracy)) |
 | **Confabulation** | L12-G: **90% zero-confabulation** (9/10 runs, N=10) |
-| **Cross-language** | Python, Go, TypeScript validated |
+| **Cross-language** | Python (primary), Go and TypeScript tested (conservation laws derived, N=1 each, AI-scored) |
 
 ### Round 41: The Format Is the Intelligence
 
-We replaced every domain word in the L12 prism with nonsense ("glorpnax," "blorpwhistle") — same imperative format, numbered steps, output requirements. **It scored 10/10.** The original scored 9. Format carries meaning independently of vocabulary.
+We replaced every domain word in the L12 prism with nonsense ("glorpnax," "blorpwhistle") — same imperative format, numbered steps, output requirements. **It scored 10/10.** The original scored 9. Format carries meaning independently of vocabulary. (This also means the AI-evaluated depth rubric partially measures format compliance — the scrambled prompt produces structurally valid output that scores high on the same template the rubric rewards. Human evaluation would measure something different.)
 
 This led to gap detection: prisms that identify what the analysis **can't verify**. Two complementary prisms — `knowledge_boundary` (classifies claims) and `knowledge_audit` (attacks confabulation) — catch errors that L12 misses:
 
@@ -366,7 +366,7 @@ The best prism per use-case. All auto-selected by `prism.py` — you just pick t
 
 ### What L12 actually produces
 
-These are real outputs — trade-offs the prism discovered on its own, not things you told it to look for:
+These are real outputs — trade-offs the prism derived on its own, not things you told it to look for. Conservation laws are design heuristics (category-level trade-offs that help you reason about the code), not empirically falsifiable claims about specific implementations:
 
 - **EventBus** (Opus): "The more flexible your event coordination, the less you can predict what the system will do." Predicts: successful retries reset failure counters, the circuit breaker becomes a load amplifier.
 - **CircuitBreaker** (Opus): "Every fault-tolerance mechanism extends the failure surface it was designed to reduce." The fix IS the problem.
@@ -441,6 +441,8 @@ The production prisms in this repo operate at Level 8-12. The default L12 prism 
 
 ## Real Results
 
+All scores are AI-evaluated (Sonnet-as-judge), not human-scored. Scores measure structural depth — how many levels of trade-off the output derives — not factual accuracy. Factual accuracy is [target-dependent](#accuracy): 97% on planted-bug code, ~42% on complex production code. Raw outputs in `output/` for independent verification.
+
 ### On Code (3 Open-Source Libraries)
 
 | Prism/Model | Starlette | Click | Tenacity | **Avg** |
@@ -498,7 +500,9 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 **Pipeline ordering matters:** Running audit before L12 produces near-empty output (18 words vs 1,137 words in correct order). The tool warns if you compose prisms in the wrong order.
 
-**Other models:** Gemini 2.5 Flash and Hermes 3 (Llama 405B) produce the same kind of output. Go and TypeScript validated. GPT untested. Prism wording was tuned on Claude; if you test elsewhere, open an issue with results.
+**Other models:** Gemini 2.5 Flash and Hermes 3 (Llama 405B) produce the same kind of output. Go and TypeScript tested (N=1 each, conservation laws derived). GPT untested. Prism wording was tuned on Claude; if you test elsewhere, open an issue with results.
+
+**Meta-analysis circularity:** Modes that feed L12 output back into analysis (`meta`, `reflect`) may produce circular self-confirmation — the template applied to its own output generates similar patterns. These modes are useful for finding unexplored dimensions and recurring themes, but their outputs should not be treated as independent validation of the original analysis.
 
 ---
 
