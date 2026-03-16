@@ -765,7 +765,7 @@ J5 (cross-target) ──→ J6 (extraction) ──→ J7 (AgentsKB fill) ──�
 - Profile regex extraction hardened (rejects labels, questions, partial sentences — requires formula notation)
 - Smart prereq framing fixed (code gets "analyze this code" not raw source as "task")
 - 9 bug fixes, 3 prompt improvements, growth caps (200/500/500), DRY refactor (shared question extractor)
-- Docs: README (19 modes, ~13,500 lines, 50 prisms), CLAUDE.md, PRISMS.md, ROADMAP all updated
+- Docs: README (20 modes, ~13,500 lines, 50 prisms), CLAUDE.md, PRISMS.md, ROADMAP all updated
 
 ---
 
@@ -1892,7 +1892,7 @@ Total: 2 calls, ~$0.052. Gets Oracle's trust level with more depth in Phase 1.
 ### T. EXTERNAL REVIEW NOTES (Mar 15)
 
 **Key feedback:**
-1. **Tool proliferation** — 50 prisms, 19 modes, 7 flags. Users need binary choice: `scan` (depth) vs `scan --trust` (verifiability). Abstract complexity away.
+1. **Tool proliferation** — 50 prisms, 20 modes, 7 flags. Users need binary choice: `scan` (depth) vs `scan --trust` (verifiability). Abstract complexity away.
 2. **Academic overclaiming** — "Conservation Law" without formal proof = Reviewer 2 rejects. Use "Observed Constraint" in paper.
 3. **Human eval (M7)** — single biggest blocker for paper.
 

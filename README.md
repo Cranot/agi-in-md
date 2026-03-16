@@ -4,7 +4,7 @@
 
 Your most expensive model produces shallow analysis because you're asking it to reason *about* problems instead of *through* them. A 332-word prompt fixes this.
 
-A **prism** is a markdown file used as a system prompt. Instead of asking the model to "analyze deeply," it tells the model to do specific things: make a claim, attack it, build an improvement, watch what breaks, derive what can't change. This repo contains 50 prisms + 19 scan modes + the tooling to use them. The newest prisms detect their own knowledge gaps and self-correct confabulated claims.
+A **prism** is a markdown file used as a system prompt. Instead of asking the model to "analyze deeply," it tells the model to do specific things: make a claim, attack it, build an improvement, watch what breaks, derive what can't change. This repo contains 50 prisms + 20 scan modes + the tooling to use them. The newest prisms detect their own knowledge gaps and self-correct confabulated claims.
 
 **Same code. Same question. Different instructions:**
 
@@ -155,7 +155,8 @@ python prism.py
 > /scan auth.py subsystem                   # different prism per class/function
 > /scan "build a connection pool" prereq    # what do I need to know first?
 
-# ── Meta ──
+# ── Verify + Meta ──
+> /scan auth.py verify-claims               # extract testable claims → generate verification commands
 > /scan auth.py meta                        # analyze what the analysis conceals
 > /scan auth.py strategist                  # plan optimal tool sequence for a goal
 > /scan auth.py evolve                      # auto-generate domain-adapted prism
@@ -177,25 +178,47 @@ python prism.py
 
 # ── Works on any input ──
 > /scan "your question" full                # text, not just code
+> /brainstorm "your question"               # alias for /scan <text> 3way
 > /scan src/                                # entire directory
 ```
 
 ### Non-Interactive CLI
 
 ```bash
+# ── Single-call modes ──
 python prism.py --scan auth.py                   # default L12 structural analysis
-python prism.py --scan auth.py oracle            # 5-phase self-aware analysis
-python prism.py --scan auth.py --trust           # alias for oracle
+python prism.py --scan auth.py oracle            # 5-phase self-aware analysis (--trust alias)
 python prism.py --scan auth.py l12g              # self-correcting, zero confab
-python prism.py --scan auth.py verified          # 4-call gap pipeline
-python prism.py --scan auth.py gaps              # show what to NOT trust
-python prism.py --scan auth.py scout             # depth + targeted verify
+python prism.py --scan auth.py scout             # depth + targeted verify (2 calls)
+python prism.py --scan auth.py meta              # analyze what the analysis conceals (2 calls)
+python prism.py --scan auth.py --explain         # preview: prisms, models, costs (no API calls)
+
+# ── Multi-call pipelines ──
 python prism.py --scan auth.py full              # 9-call champion pipeline
-python prism.py --scan auth.py strategist        # plan optimal tool sequence
+python prism.py --scan auth.py 3way             # WHERE/WHEN/WHY + synthesis (any domain)
+python prism.py --scan auth.py behavioral        # errors + costs + coupling + identity
 python prism.py --scan auth.py dispute           # 2 orthogonal prisms → disagreement synthesis
+python prism.py --scan auth.py reflect           # L12 + meta + constraint history synthesis
 python prism.py --scan auth.py subsystem         # per-class/function prism routing
 python prism.py --scan auth.py smart             # adaptive chain: prereq → AgentsKB → analysis → dispute
-python prism.py --scan auth.py --explain         # preview: prisms, models, costs (no API calls)
+
+# ── Trust + verification ──
+python prism.py --scan auth.py gaps              # show what to NOT trust (3 calls)
+python prism.py --scan auth.py verified          # 4-call gap pipeline + re-analysis
+python prism.py --scan auth.py verify-claims     # extract testable claims → verification commands
+
+# ── Knowledge + discovery ──
+python prism.py --scan auth.py strategist        # plan optimal tool sequence
+python prism.py --scan auth.py discover          # brainstorm ~20 analytical domains
+python prism.py --scan auth.py evolve            # auto-generate domain-adapted prism
+python prism.py --scan auth.py 'prereq'          # knowledge gaps → AgentsKB answers
+python prism.py --scan auth.py 'target="race conditions"'  # cook goal-specific prism
+
+# ── Fix ──
+python prism.py --scan auth.py fix               # scan → extract → fix (interactive)
+python prism.py --scan auth.py 'fix auto'        # scan → extract → fix → re-scan (automatic)
+
+# ── Solve (text input) ──
 python prism.py --solve "problem text"           # cook prism + solve
 echo "problem" | python prism.py --solve --pipe  # read from stdin
 
@@ -203,8 +226,9 @@ echo "problem" | python prism.py --solve --pipe  # read from stdin
 python prism.py --scan auth.py --confidence      # tag claims HIGH/MED/LOW
 python prism.py --scan auth.py --provenance      # source attribution per finding
 python prism.py --scan auth.py --depth deep      # shallow|standard|deep|exhaustive
+python prism.py --scan auth.py --cooker simulation  # override cooker template
 
-# Other options: -m haiku|sonnet|opus  -o FILE  --json  -q  --models  --validate  --explain
+# Other options: -m haiku|sonnet|opus  -o FILE  --json  -q  --models  --validate  --explain  --cooker
 ```
 
 ### With Claude CLI Directly
@@ -244,9 +268,13 @@ Each prism is a standalone `.md` file — use with `prism.py`, the Claude CLI (`
 | **3-Way** | `/scan file 3way` | WHERE/WHEN/WHY — 3 auto-generated operations → cross-operation synthesis | 4 | ~$0.25 |
 | **Behavioral** | `/scan file behavioral` | Error cascades + costs + coupling + identity → synthesis | 5 | ~$0.20 |
 | **Dispute** | `/scan file dispute` | 2 orthogonal prisms → disagreement synthesis | 3 | ~$0.15 |
+| **Reflect** | `/scan file reflect` | L12 → claim → constraint synthesis with history + learning memory | 3 | ~$0.15 |
 | **Subsystem** | `/scan file subsystem` | AST split → per-region prisms → cross-subsystem synthesis | N+2 | ~$0.15-0.55 |
 | **Smart** | `/scan file smart` | Adaptive chain: prereq → AgentsKB → analysis → dispute → profile | 5+ | ~$0.30-0.70 |
 | **Prereq** | `/scan file prereq` | Knowledge gaps → atomic questions → batch AgentsKB | 2+ | ~$0.10 |
+| **Verified** | `/scan file verified` | L12 + gap detection + AgentsKB fill + re-analysis | 4 | ~$0.20 |
+| **Oracle** | `/scan file oracle` | 5-phase: depth → typing → self-correct → reflect → harvest | 1 | ~$0.05 |
+| **Verify Claims** | `/scan file verify-claims` | Extract testable claims → generate verification commands | 1 | ~$0.05 |
 
 **Single** — one call, covers most cases. ~2,000 words, ~10 seconds.
 
@@ -263,6 +291,14 @@ Each prism is a standalone `.md` file — use with `prism.py`, the Claude CLI (`
 **Smart** — the system decides the pipeline. Runs prerequisites first (what do I need to know?), fills gaps from AgentsKB, then analyzes with subsystem routing, self-corrects via dispute, and saves a persistent codebase profile. Each scan makes future scans smarter.
 
 **Prereq** — identifies knowledge prerequisites for a task, converts them to atomic questions, batch-queries AgentsKB. Shows what you know vs what you need to research.
+
+**Reflect** — runs L12, then claim prism on its own output, then synthesizes with constraint history and learning memory. Finds recurring patterns across scans and names dimensions that haven't been explored yet.
+
+**Verified** — the highest-accuracy pipeline: L12 → gap detection (boundary + audit) → AgentsKB fill → re-analysis with corrections. Eliminates confabulation at the cost of 4 calls.
+
+**Oracle** — single-call maximum trust. 5 phases: depth analysis → epistemic typing → self-correction → reflexive diagnosis → harvest. Every claim tagged `[STRUCTURAL]`, `[DERIVED]`, `[KNOWLEDGE]`, or `[ASSUMED]`.
+
+**Verify Claims** — runs on a prior analysis, extracts every testable claim, generates copy-pasteable verification commands, and tells you which claims it *can't* test. Run after any scan to turn structural insights into concrete tests.
 
 Use `-m haiku` for ~5x cheaper — same depth, occasionally needs a retry.
 
@@ -298,16 +334,23 @@ The best prism per use-case. All auto-selected by `prism.py` — you just pick t
 | Maximum depth on code | `/scan file full` — 7 prisms + adversarial correction + synthesis |
 | Deep analysis on any domain | `/scan file 3way` — WHERE/WHEN/WHY + synthesis, works on anything |
 | Analyze non-code text | `/scan "your text" full` — auto-routes to 3-Way |
+| Brainstorm on text | `/brainstorm "your question"` — alias for 3-way on text |
 | Maximum trust (zero confab) | `/scan file oracle` or `--trust` — every claim typed + self-corrected |
 | Find what analysis can't verify | `/scan file gaps` — L12 + boundary + audit |
 | Self-correcting single-pass | `/scan file l12g` — like L12 but retracts confabulated claims |
+| Extract testable claims from analysis | `/scan file verify-claims` — generates verification commands you can run |
 | Plan a strategy | `/scan file strategist` — meta-agent picks optimal tools for your goal |
 | Focus on runtime behavior | `/scan file behavioral` — errors, costs, coupling, identity |
+| What does the analysis itself conceal? | `/scan file meta` — L12 + claim on its own output |
+| Auto-generate domain-adapted prism | `/scan file evolve` — 3-gen recursive cooking |
+| Fix code bugs | `/scan file fix auto` — scan → extract → fix → re-scan |
+| Explore analytical domains | `/scan file discover` — brainstorm ~20 angles, then expand |
+| Custom goal | `/scan file target="race conditions"` — cook goal-specific prism + run |
 | Security audit | `/prism security_v1` or `/prism sdl_trust` |
 | API design review | `/prism api_surface` + `/prism evolution` |
 | Predict what will break | `/prism simulation` or `/prism degradation` |
-| Temporal analysis of custom goal | `/scan file target="goal" cooker=simulation` |
-| Stratigraphic analysis of custom goal | `/scan file target="goal" cooker=archaeology` |
+| Temporal analysis of custom goal | `/scan file target="goal" cooker=simulation` or `--cooker simulation` |
+| Stratigraphic analysis of custom goal | `/scan file target="goal" cooker=archaeology` or `--cooker archaeology` |
 | Check docs match code | `/prism fidelity` |
 | Audit feature wiring | `/prism audit_code` |
 | Lightweight disagreement committee | `/scan file dispute` — 2 orthogonal prisms + synthesis, ~$0.15 |
@@ -316,6 +359,7 @@ The best prism per use-case. All auto-selected by `prism.py` — you just pick t
 | Different prism per class/function | `/scan file subsystem` — AST split, per-region prisms, cross-subsystem synthesis |
 | Maximum intelligence, self-improving | `/scan file smart` — adaptive chain: prereq → AgentsKB → analysis → dispute → profile |
 | What do I need to know before this task? | `/scan "task description" prereq` — knowledge gaps → atomic questions → AgentsKB answers |
+| View persistent knowledge base | `/kb list` — show verified facts, `/kb file` — show entries for a file |
 | Multiple angles at once | Run 3-5 prisms in parallel (see CLI examples above) |
 | Generate code | `/prism codegen` |
 | Rewrite text/docs | `/prism writer` → `/prism writer_critique` → `/prism writer_synthesis` |

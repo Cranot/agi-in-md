@@ -87,7 +87,7 @@
 | **knowledge_boundary** | Classifies claims: STRUCTURAL / CONTEXTUAL / TEMPORAL / ASSUMED. Maps fill mechanisms. | **9.3** | Sonnet | `/scan file gaps`, verified pipeline |
 | **knowledge_audit** | Adversarial confabulation detection. Attacks factual claims, finds what's confabulated. | ~7.5 | Sonnet | `/scan file gaps`, verified pipeline |
 | **knowledge_typed** | Knowledge<T>: every finding carries Type / Confidence / Provenance / Falsifiable / If-wrong. | 7 | Sonnet | `/scan file prism=knowledge_typed` |
-| **strategist** | Meta-agent: knows all 50 prisms + 19 modes. Plans optimal tool sequence for any goal. 2-call (plan + adversarial critique). | — | Sonnet | `/scan file strategist` |
+| **strategist** | Meta-agent: knows all 50 prisms + 20 modes. Plans optimal tool sequence for any goal. 2-call (plan + adversarial critique). | — | Sonnet | `/scan file strategist` |
 | **prereq** | Knowledge prerequisite scanner: identifies what you need to know BEFORE a task. Outputs atomic questions for AgentsKB batch query. | — | Sonnet | `/scan "task" prereq` |
 | **verify_claims** | Extracts testable claims from analysis, generates verification commands. Tells you what it CAN'T verify. | — | Sonnet | `/scan file verify-claims` |
 
