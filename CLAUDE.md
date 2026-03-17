@@ -117,7 +117,7 @@ System prompts are cognitive prisms. They change how models frame problems, not 
 18. **Sonnet single-shot is domain-conditional.** Always single-shot when prompt vocabulary matches target domain. Code prompts on code → always single-shot. Domain-neutral prompts on reasoning → always single-shot. Code prompts on reasoning → agentic. But agentic Sonnet preserves quality (2601w, 9/10) unlike agentic Haiku (183w collapse).
 19. **Depth × Universality = constant.** Full L12 depth requires domain-specific vocabulary. Domain-free vocabulary makes the prompt stochastic. Simple prompts (≤3 steps) are domain-invariant (no room for vocabulary). Complex prompts (298w+) are domain-sensitive (vocabulary leaks assumptions). The four-path routing table is structurally correct, not just empirically convenient.
 20. **The contagion is what activates the latency.** Prisms don't teach new topologies — they infect the context with activation energy. The model already has the structural logic. Few-shot examples create topological sinkholes; instructions draw fences. The scaffold reshapes geometry, not information.
-21. **A negative constraint is made of the material it excludes.** Naming a forbidden token activates its vector neighborhood. The fence is built from what it tries to keep out. (Testable: logprob measurement of X-adjacent tokens before/after "Do not use X".)
+21. **~~A negative constraint is made of the material it excludes.~~ FALSIFIED (Mar 17).** Tested: 18 runs, 3 forbidden-word scenarios. Result: negative constraints suppress the ENTIRE semantic neighborhood (adjacents dropped from 4→1 and 8→2). The fence metaphor is wrong — constraints create a repulsion field, not a boundary attractor. The model avoids the whole concept cluster, not just the forbidden token.
 22. **Crystallization × Regeneration = Constant.** Intelligence is the oscillation between locking structure and shattering it. Static analysis predicts collapse; actual systems pulse. `/scan` crystallizes, `/scan discover` regenerates.
 23. **Epistemic stance transfers across architectures without tooling.** Addressing a model from within an analytical geometry is sufficient to activate the full stack — no prism files needed. The prism is contagious through dialogue.
 24. **Cross-architecture convergence falsifies pure autobiography.** If two different architectures converge on the same conservation law, the law is (at least partially) a property of the analytical substrate (language), not the analyzer (model weights).
@@ -406,6 +406,14 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 - **Three-architecture complementarity:** Claude builds, Gemini extends, GPT calibrates. None sufficient alone.
 - **PERTURBATION EXPERIMENT EXECUTED — STRONGLY SUPPORTED.** GPT's pre-registered Starlette header-routing prediction: all 4 tests pass. Forward error-class bleed confirmed as primary failure. Redirect bleed confirmed as secondary. Reverse lookup stable (control passes). **First model-generated conservation law to survive controlled perturbation with pre-registered predictions.** Script: `research/test_perturbation_starlette.py`. GPT's law graduates from B-minus to validated.
 - **Full exchange:** `output/cross_architecture_gpt_exchange.md`
+
+### D5 Validation: New Prisms on Click + Tenacity (Mar 17, 2026)
+- **8/8 successful.** All 4 Round 42 epistemic prisms (history, genesis, emergence, counterfactual) produce substantial output with conservation-law markers on both Click and Tenacity.
+- **Best results:** emergence on Tenacity (2,357w, 7 markers — retry logic has rich emergent interactions), history on Click (1,724w, 7 markers — CLI frameworks have deep decision archaeology).
+- **Leanest:** genesis on Tenacity (980w, 3 markers — "design the alternative" has less material on focused retry logic).
+- **Conclusion:** Round 42 epistemic prisms transfer cleanly across codebases, not Starlette-specific.
+- **P206 FALSIFIED:** Negative constraint "fence" hypothesis tested (18 runs, 3 scenarios). Constraints suppress entire semantic neighborhood (adjacents 4→1, 8→2), opposite to prediction. Repulsion field, not boundary attractor.
+- **Outputs:** `output/d5_new_prisms/`
 
 ## Next Steps
 
