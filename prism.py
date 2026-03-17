@@ -2978,6 +2978,7 @@ class PrismREPL:
             "/reload":    {"handler": self._cmd_reload_cmd, "help": "Hot-reload prism.py + prisms without restarting",   "args": "",                                              "category": "session"},
             "/force-confirm": {"handler": self._cmd_force_confirm, "help": "Toggle: prompt before auto-reading files even in chat mode", "args": "",                              "category": "session"},
             "/kb":        {"handler": self._cmd_kb,          "help": "Knowledge base: list verified facts, clear, show entries for a file", "args": "[list|clear|<file>]",                          "category": "info"},
+            "/ledger":    {"handler": self._cmd_ledger,      "help": "Evidence ledger: structured claims with provenance + confidence",          "args": "[laws|bugs|unverified|all]",                    "category": "info"},
             "/brainstorm": {"handler": self._cmd_brainstorm, "help": "3-way analysis on text (alias for /scan <text> 3way)",                       "args": "<text|file>",                                   "category": "analysis"},
         }
         self._commands.update(cmds)
@@ -2988,6 +2989,77 @@ class PrismREPL:
         """Print bye and signal loop exit."""
         print(f"{C.DIM}bye{C.RESET}")
         return False
+
+    def _cmd_ledger(self, arg):
+        """View evidence ledger — structured claims with provenance.
+
+        /ledger           — summary (count by type + confidence)
+        /ledger laws      — show conservation laws
+        /ledger bugs      — show bug claims
+        /ledger unverified — show unverified claims
+        /ledger all       — show everything
+        """
+        _path = self.working_dir / ".deep" / "evidence_ledger.json"
+        if not _path.exists():
+            print(f"{C.YELLOW}No evidence ledger yet — "
+                  f"run /scan first{C.RESET}")
+            return
+
+        try:
+            entries = json.loads(_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            print(f"{C.RED}Ledger corrupt{C.RESET}")
+            return
+
+        if not entries:
+            print(f"{C.YELLOW}Ledger empty{C.RESET}")
+            return
+
+        arg = arg.strip().lower() if arg else ""
+
+        if arg == "all":
+            filtered = entries
+        elif arg == "laws":
+            filtered = [e for e in entries
+                        if e.get("type") == "conservation_law"]
+        elif arg == "bugs":
+            filtered = [e for e in entries
+                        if e.get("type") == "bug_claim"]
+        elif arg in ("unverified", "unv"):
+            filtered = [e for e in entries if not e.get("verified")]
+        else:
+            # Summary
+            by_type = {}
+            by_conf = {}
+            for e in entries:
+                t = e.get("type", "?")
+                c = e.get("confidence", "?")
+                by_type[t] = by_type.get(t, 0) + 1
+                by_conf[c] = by_conf.get(c, 0) + 1
+            unv = sum(1 for e in entries if not e.get("verified"))
+            print(f"{C.BOLD}Evidence Ledger: "
+                  f"{len(entries)} claims{C.RESET}")
+            print(f"  By type: {', '.join(f'{v} {k}' for k, v in sorted(by_type.items()))}")
+            print(f"  By confidence: {', '.join(f'{v} {k}' for k, v in sorted(by_conf.items()))}")
+            print(f"  Unverified: {unv}/{len(entries)}")
+            print(f"\n  {C.DIM}/ledger laws | bugs | unverified | all{C.RESET}")
+            return
+
+        if not filtered:
+            print(f"{C.YELLOW}No matching entries{C.RESET}")
+            return
+
+        print(f"{C.BOLD}{len(filtered)} entries:{C.RESET}\n")
+        for e in filtered[-20:]:  # Last 20
+            _type = e.get("type", "?")
+            _claim = e.get("claim", "?")[:100]
+            _conf = e.get("confidence", "?")
+            _src = e.get("source_file", "?")
+            _prism = e.get("prism", "?")
+            _verified = "YES" if e.get("verified") else "no"
+            print(f"  [{_conf}] {_type}: {_claim}")
+            print(f"    {C.DIM}src={_src} prism={_prism} "
+                  f"verified={_verified}{C.RESET}")
 
     def _cmd_kb(self, arg):
         """J10: Manage the persistent knowledge base (.deep/knowledge/).
@@ -3567,6 +3639,77 @@ class PrismREPL:
                 _hist_path.write_text(_trimmed, encoding="utf-8")
         except (OSError, PermissionError):
             pass  # Best-effort — never crash on history write
+
+        # Evidence ledger: structured claims with provenance.
+        # Every conservation law, bug claim, and structural finding becomes
+        # a JSON object with source, confidence tier, and falsification path.
+        # This is THE bridge from "impressive prose" to "verifiable tool."
+        try:
+            _ledger_path = (self.working_dir / ".deep"
+                            / "evidence_ledger.json")
+            _ledger = []
+            if _ledger_path.exists():
+                try:
+                    _ledger = json.loads(
+                        _ledger_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    _ledger = []
+
+            # Extract conservation laws
+            _laws = re.findall(
+                r'[Cc]onservation [Ll]aw[:\s]*[`"\']*(.+?)'
+                r'[`"\']*(?:\n|$)', output)
+            for law in _laws[:3]:
+                law = law.strip()
+                if len(law) < 10 or len(law) > 200:
+                    continue
+                _ledger.append({
+                    "type": "conservation_law",
+                    "claim": law,
+                    "source_file": file_name,
+                    "prism": prism_name,
+                    "model": self.session.model,
+                    "confidence": "STRUCTURAL",
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "falsifiable": (
+                        "Find a modification that improves BOTH "
+                        "sides of the trade-off simultaneously"),
+                    "verified": False,
+                })
+
+            # Extract bug claims (from bug tables)
+            _bugs = re.findall(
+                r'\|\s*(.+?)\s*\|\s*(P[0-3]|Critical|High|Medium|Low'
+                r'|Fixable|Structural)\s*\|',
+                output)
+            for desc, severity in _bugs[:10]:
+                desc = desc.strip().strip('*')
+                if len(desc) < 10 or desc.startswith("---"):
+                    continue
+                _ledger.append({
+                    "type": "bug_claim",
+                    "claim": desc[:200],
+                    "severity": severity,
+                    "source_file": file_name,
+                    "prism": prism_name,
+                    "model": self.session.model,
+                    "confidence": "DERIVED",
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "falsifiable": (
+                        "Read the source code at the cited "
+                        "location and verify the claim"),
+                    "verified": False,
+                })
+
+            # Cap at 500 entries (rolling window)
+            if len(_ledger) > 500:
+                _ledger = _ledger[-500:]
+
+            _ledger_path.parent.mkdir(parents=True, exist_ok=True)
+            _ledger_path.write_text(
+                json.dumps(_ledger, indent=2), encoding="utf-8")
+        except (OSError, PermissionError):
+            pass  # Best-effort
 
         # Auto-update profile + KB from EVERY scan, but ONLY
         # when the output contains high-confidence structural markers.
@@ -5058,6 +5201,9 @@ class PrismREPL:
         elif len(parts) >= 2 and parts[-1] == "meta":
             result["mode"] = "meta"
             result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] == "falsify":
+            result["mode"] = "falsify"
+            result["arg"] = " ".join(parts[:-1])
         elif len(parts) >= 2 and parts[-1] == "reflect":
             result["mode"] = "reflect"
             result["arg"] = " ".join(parts[:-1])
@@ -5501,6 +5647,9 @@ class PrismREPL:
                     content, name, general=general)
             elif mode == "meta":
                 self._run_meta_pipeline(
+                    content, name, general=general)
+            elif mode == "falsify":
+                self._run_falsify(
                     content, name, general=general)
             elif mode == "verified":
                 self._run_verified_pipeline(
@@ -7118,6 +7267,89 @@ class PrismREPL:
             findings_summary=(
                 f"{len(outputs)} prisms: "
                 f"{', '.join(outputs.keys())}"),
+        )
+
+    def _run_falsify(self, content, file_name, general=False):
+        """Falsification pipeline: L12 → extract conservation law → falsify.
+
+        Addresses the structural bias: L12 MUST produce a conservation law
+        (it's in the instructions). This pipeline tests whether the law
+        found is genuine (specific to this code) or an inevitability
+        narrative (could apply to anything).
+        """
+        # Phase 1: L12 analysis
+        print(f"\n{C.BOLD}{C.BLUE}── Phase 1: L12 analysis ── "
+              f"{file_name} ──{C.RESET}")
+        with self._temporary_model(
+                self._get_prism_model("l12") or "sonnet"):
+            l12_output = self._run_single_prism_streaming(
+                "l12", content, file_name, general=general)
+
+        if not l12_output or not l12_output.strip():
+            print(f"{C.RED}L12 returned empty{C.RESET}")
+            return
+
+        # Phase 2: Extract conservation law from L12 output
+        laws = re.findall(
+            r'[Cc]onservation [Ll]aw[:\s]*[`"\']*(.+?)'
+            r'[`"\']*(?:\n|$)', l12_output)
+        if not laws:
+            print(f"{C.YELLOW}No conservation law found in L12 "
+                  f"output — nothing to falsify{C.RESET}")
+            return
+
+        law_text = laws[0].strip()
+        print(f"\n  {C.CYAN}Conservation law found: "
+              f"{law_text[:100]}{C.RESET}")
+
+        # Phase 3: Falsify — stress-test the law
+        print(f"\n{C.BOLD}{C.BLUE}── Phase 2: Falsification ── "
+              f"{file_name} ──{C.RESET}")
+        falsify_msg = (
+            f"## Conservation Law Under Test\n\n"
+            f"**Law:** {law_text}\n\n"
+            f"**Source code context:**\n\n{content[:3000]}\n\n"
+            f"**Full L12 analysis that produced this law:**\n\n"
+            f"{l12_output[:3000]}")
+
+        with self._temporary_model(
+                self._get_prism_model("falsify") or "sonnet"):
+            falsify_output = self._run_single_prism_streaming(
+                "falsify", falsify_msg, file_name,
+                label=f"FALSIFY ── {law_text[:60]}",
+                general=True,
+                intent="falsify")
+
+        if falsify_output:
+            # Extract verdict
+            verdict_m = re.search(
+                r'(VERIFIED|PLAUSIBLE|GENERIC|FALSE)',
+                falsify_output)
+            if verdict_m:
+                verdict = verdict_m.group(1)
+                color = (C.GREEN if verdict == "VERIFIED"
+                         else C.CYAN if verdict == "PLAUSIBLE"
+                         else C.YELLOW if verdict == "GENERIC"
+                         else C.RED)
+                print(f"\n{color}Verdict: {verdict}{C.RESET}")
+
+            # Save combined
+            combined = (
+                f"## L12 ANALYSIS\n\n{l12_output}\n\n---\n\n"
+                f"## CONSERVATION LAW: {law_text}\n\n---\n\n"
+                f"## FALSIFICATION\n\n{falsify_output}")
+            self._save_deep_finding(
+                file_name, "falsify", combined)
+
+        self._session_log.append(
+            operation="falsify",
+            file_name=file_name,
+            lens="l12+falsify",
+            model=self.session.model,
+            mode="falsify",
+            findings_summary=(
+                f"Law: {law_text[:80]}, "
+                f"Verdict: {verdict_m.group(1) if verdict_m else '?'}"),
         )
 
     def _run_meta_pipeline(self, content, file_name, general=False):

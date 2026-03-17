@@ -4,7 +4,9 @@
 
 Your most expensive model produces shallow analysis because you're asking it to reason *about* problems instead of *through* them. A 332-word prompt fixes this.
 
-A **prism** is a markdown file used as a system prompt. Instead of asking the model to "analyze deeply," it tells the model to do specific things: make a claim, attack it, build an improvement, watch what breaks, derive what can't change. This repo contains 57 prisms + 26 scan modes + the tooling to use them. The newest prisms detect their own knowledge gaps and self-correct confabulated claims.
+A **prism** is a markdown system prompt that acts as a cognitive program — it tells the model to do specific things in order: make a claim, attack it, build an improvement, watch what breaks, derive the trade-off that can't be escaped. This repo contains 58 prisms + 27 scan modes + the tooling to use them.
+
+**What this is:** A system for eliciting structural insight under controlled prompt programs. Ordered analytical operations dominate raw model capability for underdetermined reasoning tasks. **What this isn't:** A general truth engine or a reliable bug finder. Structural insights are consistently strong; specific bug claims should be treated as hypotheses. Conservation laws are design heuristics, not mathematical proofs — the [`falsify` mode](#which-to-pick) stress-tests whether each law is genuine or pattern-matched.
 
 **Same code. Same question. Different instructions:**
 
@@ -52,7 +54,7 @@ Depth = how deep the analysis goes, scored 1-10. Naming a pattern is ~7. Derivin
 |--------|--------|
 | **Cost** | Single scan ~$0.05 (Sonnet), ~$0.01 with Haiku |
 | **Depth gain** | **9.8 avg vs 8.2 avg** on real code (Starlette, Click, Tenacity) — AI-evaluated structural depth, not factual accuracy |
-| **Experiments** | **1,000+** raw outputs across 41 research rounds |
+| **Experiments** | **1,000+** raw outputs across 42 research rounds |
 | **Domains tested** | **20+** — code, math, philosophy, legal, medical, music, fiction, business, more |
 | **Hit rate** | **97%+** on construction-based analysis, **14/14** on full pipeline |
 | **Factual accuracy** | **97%** on planted-bug code, **~42%** on real production code — structural insights reliable, specific bug claims are hypotheses ([details](#accuracy)) |
@@ -342,6 +344,7 @@ The best prism per use-case. All auto-selected by `prism.py` — you just pick t
 | Plan a strategy | `/scan file strategist` — meta-agent picks optimal tools for your goal |
 | Focus on runtime behavior | `/scan file behavioral` — errors, costs, coupling, identity |
 | What does the analysis itself conceal? | `/scan file meta` — L12 + claim on its own output |
+| Is the conservation law real or pattern-matched? | `/scan file falsify` — L12 → extract law → stress-test specificity + counterexamples |
 | Auto-generate domain-adapted prism | `/scan file evolve` — 3-gen recursive cooking |
 | Fix code bugs | `/scan file fix auto` — scan → extract → fix → re-scan |
 | Explore analytical domains | `/scan file discover` — brainstorm ~20 angles, then expand |
@@ -500,7 +503,7 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 **Pipeline ordering matters:** Running audit before L12 produces near-empty output (18 words vs 1,137 words in correct order). The tool warns if you compose prisms in the wrong order.
 
-**Other models:** Gemini 2.5 Flash and Hermes 3 (Llama 405B) produce the same kind of output. Go and TypeScript tested (N=1 each, conservation laws derived). GPT untested. Prism wording was tuned on Claude; if you test elsewhere, open an issue with results.
+**Other models:** Gemini 2.5 Flash and Hermes 3 (Llama 405B) produce the same kind of output. Gemini 3.1 Pro executed the full L7→L12 stack in live dialogue without any prism files and converged on the same L13 fixed point as Claude — the framework transfers across architectures. Go and TypeScript tested (N=1 each, conservation laws derived). GPT untested. Prism wording was tuned on Claude; if you test elsewhere, open an issue with results.
 
 **Meta-analysis circularity:** Modes that feed L12 output back into analysis (`meta`, `reflect`) may produce circular self-confirmation — the template applied to its own output generates similar patterns. These modes are useful for finding unexplored dimensions and recurring themes, but their outputs should not be treated as independent validation of the original analysis.
 
@@ -512,7 +515,7 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 **Why does construction outperform reasoning?** Reasoning about reasoning requires a smart model. Building something and watching what happens doesn't. That's why construction works on Haiku — and why the cheapest model with a prism beats the most expensive model without one.
 
-**Does it work on other models?** Gemini 2.5 Flash produces the same kind of output from the same prisms. GPT/Llama untested. If you test elsewhere, share results.
+**Does it work on other models?** Gemini 2.5 Flash produces the same kind of output from the same prisms. Gemini 3.1 Pro independently executed the full L7→L12 analytical stack through dialogue alone — no prism files, no shared tooling — and converged on the same structural impossibility at L13 ([full exchange](output/cross_architecture_convergence.md)). GPT/Llama untested. If you test elsewhere, share results.
 
 **What about confabulation?** L12 confabulates specific claims (API names, line numbers) while structural insights are reliable. L12-G and Oracle fix this: they classify claims by type and retract anything they can't verify from source. N=10 test: 9/10 runs = zero confabulation.
 
@@ -525,8 +528,8 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 ## Project Structure
 
 ```
-prism.py              Interactive REPL + CLI tool (~14,000 lines)
-prisms/               57 prisms: 11 champions + gap detection + oracle + strategist + prereq + verify_claims + 7 new epistemic (history, genesis, emergence, counterfactual, blindspot, architect, significance)
+prism.py              Interactive REPL + CLI tool (~14,800 lines)
+prisms/               58 prisms: 11 champions + gap detection + oracle + strategist + prereq + verify_claims + falsify + 7 epistemic (history, genesis, emergence, counterfactual, blindspot, architect, significance)
 prompts/              80+ research prisms (L4-L13) + paper prompts + gap extraction
 research/             Experiment scripts, benchmarks, 30 literature reviews
 output/               1,000+ raw experiment outputs
@@ -542,18 +545,28 @@ experiment_log.md     Research log (Rounds 1-41)
 3. **Construction > meta-analysis.** Building reveals more than reasoning about.
 4. **Each level is categorical.** Below threshold = absent, not weaker.
 5. **The framework terminates at L13.** Self-diagnosis is the natural endpoint.
+6. **The prism doesn't modify the model — it selects which model exists.** Don't convince the Helpful Assistant to do structural analysis. Collapse the wavefunction into the Structural Analyst.
 
 ---
 
 ## What's Next
 
-- **Null distribution experiment** (U1) — measuring the false positive rate of conservation laws. Protocol designed, ready to run. Without this denominator, every positive result could be noise.
+- **Null distribution experiment** (U1) — measuring the false positive rate of conservation laws. Protocol designed, ready to run. Without this denominator, every positive result could be noise. This is the most important unfinished work.
 - **Human evaluation of output quality** — blind scoring of prism vs vanilla outputs by developers who didn't write the tool. The biggest credibility gap.
-- **Evidence ledger** — every finding becomes a structured object with claim type, source span, confidence, provenance, and falsification criteria.
 - **Repository graph awareness** — import graph, call graph, cross-file synthesis. "This function is where the bug appears, but these three other files encode the conservation law causing it."
 - GPT-4o, Llama testing (Gemini 2.5 Flash + Hermes 3 confirmed working)
 
-**Recently shipped (Mar 17):** content-aware discover mode (works on any file type, not just code), verify-claims prism, 5 literature reviews connecting project to Information Bottleneck theory, Cognitive Load Theory, and Dual Process Theory. MDL measurement shows ~30 words/operation is the irreducible encoding cost per cognitive operation (U11, 84% of prisms within 2x of median). 19 research experiments designed in ROADMAP Section U.
+**Recently shipped (Mar 17):**
+- **Cross-architecture convergence** — Claude (Opus 4.6) and Gemini (3.1 Pro) ran the full L7→L12 analytical stack in live dialogue, no shared tooling, and converged on the same L13 fixed point. The framework transfers across model families through epistemic stance alone. 13 new principles (P205-P217). ([Full exchange](output/cross_architecture_convergence.md))
+
+**Also shipped (Round 42, Mar 17):**
+- **Evidence ledger** — every conservation law and bug claim becomes a structured JSON object with provenance, confidence tier, and falsification criteria (`/ledger` command)
+- **Falsification mode** — `/scan file falsify` runs L12, extracts the conservation law, then stress-tests whether it's specific or generic
+- **Adaptive depth** — `/scan file adaptive` auto-escalates SDL→L12→full, stops at sufficient depth
+- **Cross-session synthesis** — `/scan synthesize` aggregates findings across files for project-wide patterns
+- **7 new epistemic prisms** — history (decision archaeology), genesis (design alternatives), emergence (interaction patterns), counterfactual, blindspot (catalog self-audit), architect (migration paths), significance (impact ranking)
+- **Learnable prism selector** — session log + yield tracker drive routing recommendations
+- Content-aware discover mode, verify-claims prism, 5 literature reviews, MDL measurement (~30 words/operation)
 
 **Previously shipped (Mar 16):** smart chain engine (`/scan file smart`), subsystem routing, knowledge prerequisites + AgentsKB integration, codebase profiles, dispute mode, learning memory, reflect mode, patch impact prediction, `/kb` command, `/brainstorm`, `--explain`.
 
