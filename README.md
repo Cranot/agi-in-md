@@ -547,12 +547,15 @@ experiment_log.md     Research log (Rounds 1-41)
 
 ## What's Next
 
+- **Null distribution experiment** (U1) — measuring the false positive rate of conservation laws. Protocol designed, ready to run. Without this denominator, every positive result could be noise.
 - **Human evaluation of output quality** — blind scoring of prism vs vanilla outputs by developers who didn't write the tool. The biggest credibility gap.
 - **Evidence ledger** — every finding becomes a structured object with claim type, source span, confidence, provenance, and falsification criteria.
 - **Repository graph awareness** — import graph, call graph, cross-file synthesis. "This function is where the bug appears, but these three other files encode the conservation law causing it."
 - GPT-4o, Llama testing (Gemini 2.5 Flash + Hermes 3 confirmed working)
 
-**Recently shipped (Mar 16):** smart chain engine (`/scan file smart`), subsystem routing, knowledge prerequisites + AgentsKB integration, codebase profiles, dispute mode, learning memory, reflect mode, patch impact prediction, `/kb` command, `/brainstorm`, `--explain`. Cross-project law injection tested and disabled (anchoring effect — model copies provided laws instead of discovering its own).
+**Recently shipped (Mar 17):** content-aware discover mode (works on any file type, not just code), verify-claims prism, 5 literature reviews connecting project to Information Bottleneck theory, Cognitive Load Theory, and Dual Process Theory. MDL measurement shows ~30 words/operation is the irreducible encoding cost per cognitive operation (U11, 84% of prisms within 2x of median). 19 research experiments designed in ROADMAP Section U.
+
+**Previously shipped (Mar 16):** smart chain engine (`/scan file smart`), subsystem routing, knowledge prerequisites + AgentsKB integration, codebase profiles, dispute mode, learning memory, reflect mode, patch impact prediction, `/kb` command, `/brainstorm`, `--explain`.
 
 Want to help? Test on other models, run `--trust` on your code and report what it finds, open PRs with results. **Especially welcome: independent human evaluation of outputs in `output/`.**
 
