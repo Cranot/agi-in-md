@@ -5601,6 +5601,22 @@ class PrismREPL:
               f"pipeline. Self-improving.{C.RESET}")
         print()
 
+        # 20. verify-claims (shown only for code with prior findings)
+        _has_prior = False
+        if file_name:
+            _fp = (self.working_dir / ".deep" / "findings"
+                   / f"{self._discover_cache_key(file_name)}.md")
+            _has_prior = _fp.exists()
+        if is_code and _has_prior:
+            print(f"  {C.CYAN}verify-claims{C.RESET} "
+                  f"{C.BOLD}Verify Claims{C.RESET}")
+            print(f"              1 call: extract testable "
+                  f"claims → generate verification commands. "
+                  f"~$0.05.")
+            print(f"              {C.DIM}Run after any scan. "
+                  f"Tells you what it CAN'T verify.{C.RESET}")
+            print()
+
         # ── Recommendation ──
         print(f"{C.BOLD}Recommendation:{C.RESET}\n")
 

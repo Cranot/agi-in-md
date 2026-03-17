@@ -230,7 +230,7 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 
 | File | Purpose |
 |------|---------|
-| `prism.py` | Prism — structural analysis through cognitive prisms, any domain (main tool, ~13,500 lines) |
+| `prism.py` | Prism — structural analysis through cognitive prisms, any domain (main tool, ~14,000 lines) |
 | `deep.sh` | CLI prism analysis tool (standalone) |
 | `test_plan_pipeline.py` | Tests for prism.py (56 tests) |
 | **Prisms** | |

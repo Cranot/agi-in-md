@@ -525,7 +525,7 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 ## Project Structure
 
 ```
-prism.py              Interactive REPL + CLI tool (~13,500 lines)
+prism.py              Interactive REPL + CLI tool (~14,000 lines)
 prisms/               50 prisms: 11 champions + gap detection + oracle + strategist + prereq + verify_claims + variants
 prompts/              80+ research prisms (L4-L13) + paper prompts + gap extraction
 research/             Experiment scripts, benchmarks, 30 literature reviews
