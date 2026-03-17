@@ -2,7 +2,7 @@
 
 System prompts are cognitive prisms. They change how models frame problems, not how well they solve them. This project maps the space of cognitive compression — encoding analytical operations in minimal markdown that reliably activates specific reasoning patterns across language models.
 
-40 rounds, 1,000+ experiments across Haiku/Sonnet/Opus. 13 confirmed compression levels (L13 = reflexive ceiling). 20+ domains tested. 204+ proven principles. Full detail in `experiment_log.md` (rounds 1-40) and CLAUDE.md sections below (rounds 30-40).
+42 rounds, 1,000+ experiments across Haiku/Sonnet/Opus. 13 confirmed compression levels (L13 = reflexive ceiling). 20+ domains tested. 204+ proven principles. Full detail in `experiment_log.md` (rounds 1-40) and CLAUDE.md sections below (rounds 30-42).
 
 ## The Compression Taxonomy
 
@@ -180,6 +180,15 @@ Q5: Does the user want to fix issues?
 | Different prism per class/function | `/scan file subsystem` | AST split → calibrate → per-region prism → cross-subsystem synthesis |
 | Maximum intelligence (adaptive) | `/scan file smart` | prereq → AgentsKB fill → subsystem/L12 → dispute → profile. Self-improving. |
 | What to know before a task | `/scan "task" prereq` | Knowledge gaps → atomic questions → batch AgentsKB answers |
+| Auto-escalating depth | `/scan file adaptive` | SDL→L12→full, stops at first sufficient depth. Cheapest per-target. |
+| Project-wide patterns | `/scan synthesize` | Aggregate all prior findings → cross-file patterns + systemic risks |
+| Decision archaeology | `/scan file --use-prism history` | WHY code looks this way — decision fossils + dependency chains |
+| Creative alternative | `/scan file --use-prism genesis` | Design the system that WOULDN'T have this conservation law |
+| Interaction emergence | `/scan file --use-prism emergence` | Properties the SYSTEM has that no component intends |
+| Systematic what-if | `/scan file --use-prism counterfactual` | Construct full alternatives for each major decision |
+| Catalog self-audit | `/scan file --use-prism blindspot` | What cognitive operations the catalog systematically misses |
+| Architecture exploration | `/scan file --use-prism architect` | 3 alternative architectures + migration path + trade-off matrix |
+| Finding significance | `/scan file --use-prism significance` | Rank findings by surprise × actionability × counterfactual impact |
 
 ### Model Selection Strategy — Four Routing Paths
 
@@ -230,11 +239,11 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 
 | File | Purpose |
 |------|---------|
-| `prism.py` | Prism — structural analysis through cognitive prisms, any domain (main tool, ~14,000 lines) |
+| `prism.py` | Prism — structural analysis through cognitive prisms, any domain (main tool, ~14,600 lines) |
 | `deep.sh` | CLI prism analysis tool (standalone) |
 | `test_plan_pipeline.py` | Tests for prism.py (56 tests) |
 | **Prisms** | |
-| `prisms/` | 50 prism files on disk — see README and PRISMS.md for full catalog. |
+| `prisms/` | 57 prism files on disk — see README and PRISMS.md for full catalog. |
 | `prisms/l12.md` | L12 meta-conservation pipeline — default for `/scan` on code (332w) |
 | `prisms/l12_universal.md` | L12 compressed to 73w — Sonnet-only universal (code + reasoning), always single-shot |
 | `prisms/deep_scan.md` | SDL-1: Structural Deep-Scan Lens — conservation law + info laundering + 3 bug patterns (180w) |
@@ -349,17 +358,18 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 - **Taxonomy is a tree above L8 (P183)**: Simulation branch produces different L9 meta-law (Predictive Certainty × Temporal Distance) than construction's L9. Diamond topology holds.
 - **Sonnet lifts all operations +0.7 avg depth** (P180). Simulation/Miniaturize/Transplant benefit most (hypothetical reasoning).
 - **DIAMOND CONVERGENCE CONFIRMED (P184-P188)**: Two full L9→L12 chains (simulation + archaeology) BOTH converge at L12 on the same structural impossibility as construction: "the method instantiates what it diagnoses." Three vocabularies (observer-constitutive / observer effect / performative contradiction), one fixed point. Conservation laws diverge at every level EXCEPT L12. Terminal behavior converges to fixed point regardless of starting operation. The taxonomy is operation-independent at the reflexive ceiling.
-- **50 prism files on disk** (production + pipeline-internal + variants), all scored, all with optimal model routing.
+- **57 prism files on disk** (production + pipeline-internal + variants), all scored, all with optimal model routing.
 - **3-cooker pipeline (P195-P197)**: COOK_ARCHAEOLOGY(WHERE) + COOK_SIMULATION(WHEN) + COOK_UNIVERSAL(WHY) → synthesis. 4 calls, 9.5 depth. Cross-operation synthesis is inherently adversarial (no dedicated adversarial pass needed). Works on ANY domain — cookers customize to intent. Solves "non-code Full Prism" question.
 - **COOK_3WAY template** (`research/cook_3way.md`): Single cook step that generates all 4 prompts (3 operations + synthesis) for the 3-cooker pipeline. Combines COOK_ARCH + COOK_SIM + COOK_L12 + synthesis prompt into one.
 - **Operation-specific cookers** (`research/cook_simulation.md`, `research/cook_archaeology.md`): Preserve operation type through explicit negative instructions ("No trilemmas, no impossibility proofs"). Validated on security intent.
 
 ## Next Steps
 
+- **Round 42 COMPLETE** (Mar 17, 2026): Reflexive pivot — 25+ self-scans, 5 architectural fixes, 4 new epistemic prisms, 2 new capabilities, bugs found and fixed by the tool itself. Master conservation law: `Depth × Universality × Economy = constant`.
+- **Round 42 new capabilities**: Adaptive depth mode (`/scan file adaptive` — SDL→L12→full auto-escalation), Cross-session synthesis (`/scan synthesize`), COOK_CONCEALMENT (L7 diagnostic gap cooker).
+- **Round 42 new prisms (7)**: history (decision fossils), genesis (inverse of L12 — design alternative), emergence (interaction patterns), counterfactual (systematic alternative construction), blindspot (meta-catalog audit), architect (architecture exploration + migration path), significance (finding impact ranking). 57 prisms total.
+- **Round 42 architectural fixes (5)**: `_temporary_model` context manager (36 sites), auto-built `OPTIMAL_PRISM_MODEL` from YAML (54 prisms), `_execute_prism` wrapper, `_get_domain_prompt` factory, `COOK_CONCEALMENT`.
 - **Round 40 COMPLETE** (Mar 14, 2026): 55 tests, 7 new principles (P198-P204), scaling confirmed, creative domains tested, vertical composition mapped.
 - **Round 39 COMPLETE** (Mar 13, 2026): 4 new prisms (simulation, cultivation, archaeology, sdl_simulation), 23 principles (P175-P197), ~45 experiments across 9 batches. Diamond convergence PROVEN. 3-cooker pipeline VALIDATED and INTEGRATED.
-- **COOK_3WAY integrated**: `/scan file 3way` explicit mode + auto-route for non-code `full`. Replaces COOK_UNIVERSAL_PIPELINE in 6 sites (chat full, general full, expand full, CLI solve full, optimize full, deep/target full). COOK_UNIVERSAL_PIPELINE kept ONLY for discover full (brainstorm chaining).
-- **Cross-target validation**: DONE (Round 40).
-- **Larger codebase testing**: DONE (Round 40, scales to 2700L).
 - **Sonnet lens factory**: Automate delta method via `--factory`. Systematically design 3-step lenses.
 - **Sub-artifact targeting**: Different prisms on different code subsystems for complementary findings.

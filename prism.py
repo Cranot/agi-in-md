@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 
 
 # ── Windows ANSI support ─────────────────────────────────────────────────────
@@ -136,10 +137,10 @@ def _load_model_map():
 
 MODEL_MAP = _load_model_map()
 
-# OPTIMAL MODEL PER PRISM: Validated by definitive_grid.py (Mar 12, 2026).
-# Optimal model for each prism. 29 production + 4 internal prisms.
-# Pipeline core: validated in definitive_grid.py (28 runs, 3 reps × 2 judges).
-# Standalone: structural (SDL/3-step) = haiku (model-independent), behavioral = sonnet (+0.5-1.3).
+# OPTIMAL MODEL PER PRISM: Single source of truth = YAML frontmatter.
+# Each prism file (prisms/*.md) declares `optimal_model: haiku|sonnet|opus`
+# in its YAML frontmatter. This dict is auto-built at startup from those files.
+# User overrides: ~/.prism/models.json patches the auto-generated dict.
 # Philosophy: default = best quality. User can opt down with -m for cost savings.
 # Best model for cooking custom lenses (P73: cook model is the dominant
 # pipeline variable). Session model (-m) only affects the solve step;
@@ -148,58 +149,47 @@ MODEL_MAP = _load_model_map()
 # Default sonnet: best cost/quality ratio. Haiku cook = 2x worse (P70).
 COOK_MODEL = "sonnet"
 
-OPTIMAL_PRISM_MODEL = {
-    # Pipeline Core (9) — validated in definitive_grid.py, Round 37
-    "l12": "sonnet",
-    "deep_scan": "opus",
-    "fix_cascade": "opus",
-    "identity": "sonnet",
-    "optimize": "sonnet",
-    "error_resilience": "sonnet",
-    "fidelity": "sonnet",
-    "l12_complement_adversarial": "opus",
-    "l12_synthesis": "opus",
-    # Code Standalone — structural (SDL/3-step) = haiku, behavioral = sonnet
-    "security_v1": "haiku",
-    "testability_v1": "haiku",
-    "sdl_trust": "haiku",
-    "sdl_coupling": "haiku",
-    "sdl_abstraction": "haiku",
-    "contract": "haiku",
-    "audit_code": "haiku",
-    "evolution": "sonnet",         # behavioral: +0.8-1.0 Sonnet gap
-    "api_surface": "sonnet",       # behavioral: +0.5-0.8 Sonnet gap
-    "evidence_cost": "sonnet",
-    "reachability": "sonnet",
-    "state_audit": "sonnet",
-    "codegen": "sonnet",
-    # Alternative primitives — Round 39 (hand-crafted, non-L12 operations)
-    "simulation": "sonnet",        # temporal prediction: +0.5 Sonnet gap
-    "sdl_simulation": "haiku",     # SDL temporal fragility: Haiku-optimized, 3 steps
-    "cultivation": "sonnet",       # perturbation-response: hypothetical reasoning
-    "archaeology": "sonnet",       # stratigraphic layers: +0.5 Sonnet gap
-    # Universal — portfolio prisms: structural, model-independent
-    "l12_universal": "sonnet",     # 73w compression floor requires Sonnet
-    "pedagogy": "haiku",
-    "claim": "haiku",
-    "scarcity": "haiku",
-    "rejected_paths": "haiku",
-    "degradation": "haiku",
-    # Writing Pipeline
-    "writer": "sonnet",
-    "writer_critique": "opus",
-    "writer_synthesis": "opus",
-    # Internal
-    "behavioral_synthesis": "sonnet",
-    # Knowledge gap detection — Round 41 (Mar 15, 2026)
-    "knowledge_boundary": "sonnet",    # gap classification: 4/4 targets validated
-    "knowledge_audit": "sonnet",       # adversarial confabulation detection
-    "knowledge_typed": "sonnet",       # Knowledge<T> typed claims + provenance
-    "l12g": "sonnet",                  # gap-aware L12: single-pass self-correcting
-    "oracle": "sonnet",                # 5-phase: depth+typing+correction+reflection+harvest
-    "prereq": "sonnet",               # knowledge prerequisites: atomic questions for AgentsKB
-    "verify_claims": "sonnet",         # extract testable claims, generate verification commands
-}
+
+def _build_prism_model_map():
+    """Build OPTIMAL_PRISM_MODEL from prism YAML frontmatter at startup.
+
+    Reads all .md files in PRISM_DIR, extracts optimal_model field.
+    Returns dict mapping prism_name -> optimal_model ('haiku'/'sonnet'/'opus').
+    User overrides from ~/.prism/prism_models.json are applied on top.
+    """
+    result = {}
+    if not PRISM_DIR.exists():
+        return result
+    for path in PRISM_DIR.glob("*.md"):
+        try:
+            content = path.read_text(encoding="utf-8")
+            if not content.startswith("---"):
+                continue
+            end = content.find("---", 3)
+            if end < 0:
+                continue
+            for line in content[3:end].split("\n"):
+                if line.strip().startswith("optimal_model"):
+                    _, val = line.split(":", 1)
+                    model = val.strip().strip('"').strip("'")
+                    if model in ("haiku", "sonnet", "opus"):
+                        result[path.stem] = model
+                    break
+        except (OSError, ValueError):
+            continue
+    # User overrides (prism-specific routing)
+    override_path = pathlib.Path.home() / ".prism" / "prism_models.json"
+    if override_path.exists():
+        try:
+            overrides = json.loads(override_path.read_text(encoding="utf-8"))
+            if isinstance(overrides, dict):
+                result.update(overrides)
+        except (ValueError, OSError):
+            pass
+    return result
+
+
+OPTIMAL_PRISM_MODEL = _build_prism_model_map()
 
 # Static Full Pipeline: 9-step champion pipeline for code analysis.
 # Replaces auto-cook (scored 8.0) with hand-iterated champions (scored 9-10).
@@ -215,6 +205,9 @@ STATIC_CODE_PIPELINE = [
     {"prism": "optimize", "role": "OPTIMIZATION COSTS", "chain": False},
     {"prism": "error_resilience", "role": "ERROR RESILIENCE", "chain": False},
     {"prism": "fidelity", "role": "CONTRACT FIDELITY", "chain": False},
+    # Conditional: only runs when security-relevant code detected
+    {"prism": "security_v1", "role": "SECURITY", "chain": False,
+     "condition": "has_security_keywords"},
     # Phase 2: Adversarial (receives L12 output to attack)
     {"prism": "l12_complement_adversarial", "role": "ADVERSARIAL", "chain": True},
     # Phase 3: Synthesis (receives all prior outputs)
@@ -373,6 +366,8 @@ COOK_PROMPT = (
 # Extract domains from brainstorming output. Unlike COOK_PROMPT (which discovers
 # domains from an artifact), this faithfully extracts what brainstorming ALREADY found.
 # No code-file bias — preserves non-technical domains (marketing, psychology, etc.).
+# Part of the Domain Discovery family: COOK_PROMPT (discover from artifact) +
+# COOK_EXTRACT_DOMAINS_PROMPT (extract from brainstorming). Same JSON output format.
 COOK_EXTRACT_DOMAINS_PROMPT = (
     "You are an extraction engine. You receive brainstorming output that identified "
     "multiple domains an artifact could be investigated through.\n\n"
@@ -395,6 +390,17 @@ COOK_EXTRACT_DOMAINS_PROMPT = (
     'of what investigating this domain would reveal", '
     '"type": "structural_or_escape", "priority": 1}}, ...]  (priority: 1=highest)'
 )
+
+
+def _get_domain_prompt(source="artifact"):
+    """Get domain discovery/extraction prompt by source type.
+
+    - 'artifact': discover domains from raw artifact (COOK_PROMPT)
+    - 'brainstorming': extract domains from brainstorming output (COOK_EXTRACT_DOMAINS_PROMPT)
+    """
+    if source == "brainstorming":
+        return COOK_EXTRACT_DOMAINS_PROMPT
+    return COOK_PROMPT
 
 
 # ── Universal Cooker ─────────────────────────────────────────────────────
@@ -950,6 +956,28 @@ COOK_ARCHAEOLOGY = (
     "INTENT: {intent}\n\n"
     "Output ONLY a JSON object:\n"
     '{{\"name\": \"snake_case_name\", \"prompt\": \"the prism text\"}}'
+)
+
+# COOK_CONCEALMENT: L7 diagnostic gap cooker (Round 42).
+# Fills the gap between domain discovery (COOK_PROMPT) and L8 construction
+# (COOK_UNIVERSAL). Generates L7-level prompts: claim → concealment → self-application.
+# Use with --cooker concealment.
+COOK_CONCEALMENT = (
+    "You will receive content and an intent. Another AI will receive "
+    "this content with YOUR output as its system prompt.\n\n"
+    "Your job: generate the prompt that finds what the content CONCEALS.\n\n"
+    "Three operations that produce a 9.0/10 diagnostic:\n"
+    "1. CLAIM EXTRACTION: Force the AI to name the strongest claim "
+    "the content makes about {intent}.\n"
+    "2. CONCEALMENT MECHANISM: Force identifying HOW this claim "
+    "conceals problems — what questions it makes unaskable, what "
+    "evidence it makes invisible.\n"
+    "3. MECHANISM APPLICATION: Force applying the concealment "
+    "mechanism TO ITSELF — what does this diagnostic miss?\n\n"
+    "Build into a flowing prompt (150+ words). NOT a checklist.\n\n"
+    "INTENT: {intent}\n\n"
+    "Output ONLY JSON:\n"
+    '{{"name": "snake_case", "prompt": "..."}}'
 )
 
 COOK_LENS_DISCOVER = (
@@ -1777,6 +1805,7 @@ class YieldTracker:
 
     def __init__(self, yield_path):
         self.path = pathlib.Path(yield_path)
+        self._lock = threading.Lock()
         self.db = self._load()
 
     def _load(self):
@@ -1807,15 +1836,16 @@ class YieldTracker:
                 - insightful: 50-200 chars (partial analysis)
                 - noise: <50 chars or empty (no useful output)
         """
-        d = self.db.setdefault(
-            domain_name,
-            {"total": 0, "actionable": 0, "insightful": 0, "noise": 0})
-        d["total"] += 1
-        d[outcome] = d.get(outcome, 0) + 1
-        # Yield = weighted sum of productive outcomes
-        # actionable: 1.0 weight, insightful: 0.7 weight
-        d["yield"] = (d["actionable"] * 1.0 + d["insightful"] * 0.7) / max(d["total"], 1)
-        self._save()
+        with self._lock:
+            d = self.db.setdefault(
+                domain_name,
+                {"total": 0, "actionable": 0, "insightful": 0, "noise": 0})
+            d["total"] += 1
+            d[outcome] = d.get(outcome, 0) + 1
+            # Yield = weighted sum of productive outcomes
+            # actionable: 1.0 weight, insightful: 0.7 weight
+            d["yield"] = (d["actionable"] * 1.0 + d["insightful"] * 0.7) / max(d["total"], 1)
+            self._save()
 
     def rank_domains(self, domains):
         """Sort domain list by historical yield (highest first).
@@ -1939,6 +1969,288 @@ class SessionLog:
             lines.append(f"  {ts}  {op:12s}  {model:8s}"
                          f"  {detail[:50]}{dur_str}")
         return "\n".join(lines) if lines else "  (no operations logged)"
+
+    def recommend_prism(self, file_name=None, file_ext=None,
+                        yield_tracker=None):
+        """Recommend prism based on combined intelligence sources.
+
+        Uses session log (which prisms produced depth) + yield tracker
+        (which prisms produced actionable results) to score prisms.
+        Returns (prism_name, confidence, reason) or (None, 0, "").
+        """
+        entries = self.load(limit=200)
+        if not entries:
+            return None, 0, ""
+
+        # Score prisms by output length on similar files
+        prism_scores = {}  # prism_name -> {"lengths": [], "yield": 0.5}
+        for e in entries:
+            if e.get("operation") != "analyze":
+                continue
+            lens = e.get("lens")
+            summary = e.get("findings_summary", "")
+            if not lens or not summary:
+                continue
+            # Filter internal pipeline prisms (not user-facing)
+            if lens.startswith("full_") or lens.startswith("3way_"):
+                continue
+            # Match by extension if available
+            e_file = e.get("file", "")
+            if file_ext and e_file:
+                e_ext = e_file.rsplit(".", 1)[-1] if "." in e_file else ""
+                if e_ext != file_ext:
+                    continue
+            prism_scores.setdefault(lens, {"lengths": [], "yield": 0.5})
+            prism_scores[lens]["lengths"].append(len(summary))
+
+        if not prism_scores:
+            return None, 0, ""
+
+        # Integrate yield tracker data (if available)
+        if yield_tracker:
+            for prism_name in prism_scores:
+                ys = yield_tracker.get_yield_score(prism_name)
+                prism_scores[prism_name]["yield"] = ys
+
+        # Combined score: 60% depth (avg summary length) + 40% yield
+        def _combined_score(item):
+            name, data = item
+            lengths = data["lengths"]
+            avg_len = sum(lengths) / len(lengths) if lengths else 0
+            # Normalize avg_len to 0-1 (200 chars = 1.0)
+            depth_score = min(avg_len / 200, 1.0)
+            yield_score = data["yield"]
+            return depth_score * 0.6 + yield_score * 0.4
+
+        ranked = sorted(prism_scores.items(),
+                        key=_combined_score, reverse=True)
+
+        best_prism, best_data = ranked[0]
+        avg_len = (sum(best_data["lengths"]) / len(best_data["lengths"])
+                   if best_data["lengths"] else 0)
+        n = len(best_data["lengths"])
+        ys = best_data["yield"]
+        confidence = min(n / 5, 1.0)
+
+        return (best_prism, confidence,
+                f"{best_prism} depth={avg_len:.0f}c yield={ys:.0%} "
+                f"({n} samples)")
+
+
+# ── Single-Shot Predictor (Tier 1: zero LLM cost) ───────────────────────────
+
+# Predictor calibration date — if MODEL_MAP changes, thresholds may need re-tuning
+_PREDICTOR_CALIBRATED = "2026-03-17"
+_PREDICTOR_MODEL_VERSIONS = {"haiku": "claude-haiku-4-5-20251001",
+                             "sonnet": "claude-sonnet-4-6",
+                             "opus": "claude-opus-4-6"}
+
+
+def predict_single_shot(prism_text, target_text, model_name="sonnet"):
+    """Predict probability of single-shot completion (no agentic drift).
+
+    Tier 1+2 predictor: static features + yield data, ~70-85% accuracy.
+    Calibrated on Round 42 (Mar 17, 2026) model versions.
+    Features derived from Round 42 self-analysis:
+    - Imperative verb density → constrains model action space
+    - Section marker count → provides structural boundaries
+    - Prompt word count → longer = more constrained (paradoxically)
+    - Code noun ratio in target → triggers analytical mode
+    - Model capacity match → Haiku drifts on abstract, Sonnet on reasoning
+
+    Returns (probability, features_dict) where probability is 0.0-1.0.
+    """
+    # Feature extraction
+    prism_words = prism_text.split()
+    prism_wc = len(prism_words)
+    target_wc = len(target_text.split())
+
+    # Imperative verbs that constrain model behavior
+    imperatives = {"execute", "name", "find", "identify", "prove",
+                   "list", "derive", "trace", "map", "classify",
+                   "extract", "analyze", "compare", "design", "run",
+                   "force", "collect", "output", "show", "build"}
+    imp_count = sum(1 for w in prism_words
+                    if w.lower().rstrip(".:,;") in imperatives)
+
+    # Section markers (##, Step N, Phase N) provide structural boundaries
+    section_markers = len(re.findall(
+        r'^(?:##|Step \d|Phase \d|\d+\.)', prism_text, re.MULTILINE))
+
+    # Explicit termination markers
+    terminators = len(re.findall(
+        r'(?:output only|stop after|finally:|conclude)',
+        prism_text, re.IGNORECASE))
+
+    # Code noun ratio in target (triggers analytical mode)
+    code_nouns = {"def ", "class ", "function ", "import ", "return ",
+                  "if ", "for ", "while ", "async ", "await ",
+                  "self.", "const ", "let ", "var "}
+    target_sample = target_text[:2000].lower()
+    code_hits = sum(1 for n in code_nouns if n in target_sample)
+    code_ratio = code_hits / max(len(code_nouns), 1)
+
+    # Model-specific base rates (from 40 rounds of experiments)
+    model_base = {
+        "haiku": 0.70,   # stochastic on abstract prompts
+        "sonnet": 0.85,  # reliable on code, stochastic on reasoning
+        "opus": 0.75,    # reliable but verbose
+    }
+    base = model_base.get(model_name, 0.80)
+
+    # Score adjustments (calibrated from experiment corpus)
+    score = base
+
+    # Imperative density: >3 imperatives → +0.10
+    if imp_count >= 3:
+        score += 0.10
+    elif imp_count == 0:
+        score -= 0.15
+
+    # Section markers: ≥2 → +0.05, 0 → -0.10
+    if section_markers >= 2:
+        score += 0.05
+    elif section_markers == 0:
+        score -= 0.10
+
+    # Termination markers: any → +0.05
+    if terminators > 0:
+        score += 0.05
+
+    # Code target with code prism → +0.10
+    if code_ratio > 0.3:
+        score += 0.10
+    elif code_ratio < 0.1 and model_name == "haiku":
+        score -= 0.15  # Haiku on abstract text → agentic risk
+
+    # Prompt length sweet spot: 100-350w → +0.05, <80w → -0.15
+    if 100 <= prism_wc <= 350:
+        score += 0.05
+    elif prism_wc < 80:
+        score -= 0.15  # Below compression floor → conversation mode
+
+    # Tier 2: Historical yield data (if available)
+    # Prisms with high historical actionable rate get a boost
+    yield_boost = 0.0
+    yield_data = None
+    try:
+        _yield_path = pathlib.Path(".deep") / "yield.json"
+        if _yield_path.exists():
+            _yd = json.loads(_yield_path.read_text(encoding="utf-8"))
+            prism_name = prism_text[:50].replace("\n", " ")  # rough key
+            # Try to find this prism in yield data by checking all keys
+            for k, v in _yd.items():
+                if isinstance(v, dict) and v.get("total", 0) >= 3:
+                    yield_score = v.get("yield", 0.5)
+                    if yield_score > 0.8:
+                        yield_boost = 0.05  # High-yield prism → boost
+                    elif yield_score < 0.3:
+                        yield_boost = -0.10  # Low-yield → penalty
+                    yield_data = {"name": k, "yield": yield_score,
+                                  "total": v["total"]}
+                    break
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+
+    score += yield_boost
+
+    # Clamp to [0.0, 1.0]
+    score = max(0.0, min(1.0, score))
+
+    features = {
+        "prism_words": prism_wc,
+        "target_words": target_wc,
+        "imperative_count": imp_count,
+        "section_markers": section_markers,
+        "terminators": terminators,
+        "code_ratio": round(code_ratio, 2),
+        "model": model_name,
+        "base_rate": base,
+        "yield_boost": yield_boost,
+    }
+    if yield_data:
+        features["yield_data"] = yield_data
+
+    return score, features
+
+
+# ── Epistemic Distance (C6) ──────────────────────────────────────────────────
+
+# Epistemic dimensions: each domain scores on 6 axes (0-1).
+# HEURISTIC — axis scores are hand-tuned estimates (Round 42), not
+# empirically validated. Useful for selecting diverse test targets,
+# not for precise measurement. Recalibrate if adding new domains.
+# Distance = Euclidean distance in this space. Max = sqrt(6) ≈ 2.45.
+_EPISTEMIC_AXES = {
+    # (formal_methods, empirical, interpretive, quantitative, temporal, social)
+    "code": (0.9, 0.3, 0.1, 0.7, 0.3, 0.1),
+    "mathematics": (1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+    "philosophy": (0.6, 0.1, 0.9, 0.1, 0.2, 0.4),
+    "poetry": (0.0, 0.0, 1.0, 0.0, 0.3, 0.5),
+    "legal": (0.7, 0.2, 0.6, 0.2, 0.3, 0.8),
+    "scientific": (0.5, 0.9, 0.2, 0.8, 0.5, 0.3),
+    "music": (0.3, 0.1, 0.9, 0.4, 0.7, 0.3),
+    "business": (0.2, 0.5, 0.3, 0.6, 0.6, 0.7),
+    "security": (0.8, 0.4, 0.1, 0.5, 0.4, 0.2),
+    "architecture": (0.4, 0.2, 0.8, 0.3, 0.5, 0.6),
+    "culinary": (0.0, 0.5, 0.7, 0.2, 0.3, 0.6),
+    "religious": (0.1, 0.1, 0.9, 0.0, 0.4, 0.9),
+}
+
+
+def epistemic_distance(domain_a, domain_b):
+    """Compute epistemic distance between two domains (0.0-2.45).
+
+    Higher = more different in terms of evidence standards, methods of
+    knowing, and conceptual primitives. Use to select maximally diverse
+    stress-test targets for prism validation.
+
+    Returns (distance, explanation).
+    """
+    a = _EPISTEMIC_AXES.get(domain_a)
+    b = _EPISTEMIC_AXES.get(domain_b)
+    if not a or not b:
+        return 0.0, f"Unknown domain(s): {domain_a}, {domain_b}"
+    dist = sum((ai - bi) ** 2 for ai, bi in zip(a, b)) ** 0.5
+    # Find which axes differ most
+    diffs = [(abs(ai - bi), name) for (ai, bi), name in
+             zip(zip(a, b), ("formal", "empirical", "interpretive",
+                             "quantitative", "temporal", "social"))]
+    diffs.sort(reverse=True)
+    top = diffs[0]
+    return round(dist, 2), f"max diff: {top[1]} ({top[0]:.1f})"
+
+
+def suggest_diverse_targets(n=3):
+    """Suggest n maximally diverse domain triplets for validation.
+
+    Uses greedy max-min distance to find the most epistemically
+    spread set of domains.
+    """
+    domains = list(_EPISTEMIC_AXES.keys())
+    if n >= len(domains):
+        return domains
+
+    # Greedy: start with most distant pair, add most distant from set
+    best_pair = (0, "", "")
+    for i, d1 in enumerate(domains):
+        for d2 in domains[i + 1:]:
+            dist, _ = epistemic_distance(d1, d2)
+            if dist > best_pair[0]:
+                best_pair = (dist, d1, d2)
+
+    selected = [best_pair[1], best_pair[2]]
+    while len(selected) < n:
+        best_next = (0, "")
+        for d in domains:
+            if d in selected:
+                continue
+            min_dist = min(epistemic_distance(d, s)[0] for s in selected)
+            if min_dist > best_next[0]:
+                best_next = (min_dist, d)
+        selected.append(best_next[1])
+
+    return selected
 
 
 # ── Stream Parser ────────────────────────────────────────────────────────────
@@ -2216,6 +2528,27 @@ class PrismREPL:
             else:
                 print(f"{C.YELLOW}Session '{resume_session}' not found, "
                       f"starting fresh{C.RESET}")
+
+    @contextmanager
+    def _temporary_model(self, model_name):
+        """Temporarily switch session model, restoring on exit.
+
+        Handles None (no-op), resolves via MODEL_MAP.
+        Usage: with self._temporary_model('sonnet'): ...
+        """
+        if model_name is None:
+            yield
+            return
+        resolved = MODEL_MAP.get(model_name, model_name)
+        prev = self.session.model
+        if resolved != prev:
+            print(f"  {C.DIM}Model → {model_name} "
+                  f"(optimal for prism){C.RESET}")
+        self.session.model = resolved
+        try:
+            yield
+        finally:
+            self.session.model = prev
 
     def _ensure_attributes(self):
         """Guard against time-bomb crashes after __class__ rebind: ensure all expected attributes exist."""
@@ -2941,6 +3274,9 @@ class PrismREPL:
                     print(f"  {C.DIM}  /scan auth.py meta                    L12 + claim — recursive self-analysis (what analysis conceals){C.RESET}")
                     print(f'  {C.DIM}  /scan auth.py target="X" cooker=simulation   temporal cooker instead of default{C.RESET}')
                     print(f'  {C.DIM}  /scan auth.py target="X" cooker=archaeology  stratigraphic cooker instead of default{C.RESET}')
+                    print(f'  {C.DIM}  /scan auth.py target="X" cooker=concealment  L7 diagnostic gap cooker (what conceals what){C.RESET}')
+                    print(f"  {C.DIM}  /scan auth.py adaptive                 auto-escalate: SDL→L12→full (stops when depth sufficient){C.RESET}")
+                    print(f"  {C.DIM}  /scan synthesize                        aggregate all findings — project-wide patterns{C.RESET}")
 
                     print(f"\n  {C.DIM}Discover + Expand — two-step workflow:{C.RESET}")
                     print(f"  {C.DIM}  /scan auth.py discover              ~20 focused domains (1 brainstorm pass){C.RESET}")
@@ -3326,10 +3662,12 @@ class PrismREPL:
         parts = []
 
         # Project summary: issue counts + scan age
+        # Guard: acquire findings lock to avoid reading partial writes
         issues_path = deep_dir / "issues.json"
         if issues_path.exists():
             try:
-                raw = json.loads(issues_path.read_text(encoding="utf-8"))
+                with self._findings_lock:
+                    raw = json.loads(issues_path.read_text(encoding="utf-8"))
                 self._ensure_version(raw)
                 issues = raw.get("issues", []) if isinstance(raw, dict) else raw
                 open_issues = [i for i in issues if i.get("status") != "fixed"]
@@ -3603,6 +3941,28 @@ class PrismREPL:
                               f"  {C.DIM}  /fix          pick issues interactively{C.RESET}\n"
                               f"  {C.DIM}  /fix auto     fix all issues (up to 3 passes){C.RESET}")
                 except (json.JSONDecodeError, OSError):
+                    pass
+
+            # Smart suggestions based on scan count
+            _prof_path = self.working_dir / ".deep" / "profile.json"
+            if _prof_path.exists():
+                try:
+                    _prof = json.loads(
+                        _prof_path.read_text(encoding="utf-8"))
+                    _n = _prof.get("scan_count", 0)
+                    _files = _prof.get("files_analyzed", [])
+                    if _n == 1:
+                        print(f"  {C.DIM}  /scan {data.get('file', '')} "
+                              f"full    deep analysis (9 prisms){C.RESET}")
+                    elif _n >= 3 and len(_files) >= 2:
+                        print(f"  {C.DIM}  /scan synthesize   "
+                              f"aggregate {len(_files)} files "
+                              f"for project-wide patterns{C.RESET}")
+                    if _n >= 2:
+                        print(f"  {C.DIM}  /scan {data.get('file', '')} "
+                              f"explain  see all available "
+                              f"intelligence{C.RESET}")
+                except (ValueError, OSError):
                     pass
 
     def _check_shortcuts(self, user_input):
@@ -4190,6 +4550,8 @@ class PrismREPL:
             sample = content[:2000] if len(content) > 2000 else content
 
         slug = re.sub(r'[^a-z0-9]+', '_', goal.lower()).strip('_')[:40]
+        if not slug:
+            slug = "unnamed"
 
         # Guard against shadowing built-in prisms
         builtin_path = PRISM_DIR / f"{slug}.md"
@@ -4381,33 +4743,13 @@ class PrismREPL:
 
     @staticmethod
     def _get_prism_model(name):
-        """Get optimal model for a prism. Checks OPTIMAL_PRISM_MODEL first,
-        then reads optimal_model from prism YAML frontmatter.
+        """Get optimal model for a prism from OPTIMAL_PRISM_MODEL.
 
+        Single source of truth: auto-built from YAML frontmatter at startup.
         Returns model name (e.g., 'sonnet') or None if unknown.
-        New prisms auto-route by adding optimal_model to their frontmatter.
+        New prisms auto-route by adding optimal_model to their YAML frontmatter.
         """
-        # Priority 1: hardcoded dict (validated, locked)
-        if name in OPTIMAL_PRISM_MODEL:
-            return OPTIMAL_PRISM_MODEL[name]
-        # Priority 2: read from prism file frontmatter
-        path = PRISM_DIR / f"{name}.md"
-        if not path.exists():
-            return None
-        try:
-            content = path.read_text(encoding="utf-8")
-            if content.startswith("---"):
-                end = content.find("---", 3)
-                if end > 0:
-                    for line in content[3:end].split("\n"):
-                        if line.strip().startswith("optimal_model"):
-                            _, val = line.split(":", 1)
-                            model = val.strip().strip('"')
-                            if model in ("haiku", "sonnet", "opus"):
-                                return model
-        except OSError:
-            pass
-        return None
+        return OPTIMAL_PRISM_MODEL.get(name)
 
     def _load_intent(self, name, fallback=""):
         """Load prompt from .deep/prompts/ -> shipped prompts/ -> fallback."""
@@ -4747,6 +5089,17 @@ class PrismREPL:
         elif len(parts) >= 2 and parts[-1] == "evolve":
             result["mode"] = "evolve"
             result["arg"] = " ".join(parts[:-1])
+        elif len(parts) >= 2 and parts[-1] in ("adaptive", "adapt"):
+            result["mode"] = "adaptive"
+            result["arg"] = " ".join(parts[:-1])
+            # Parse budget= if present
+            _budget_m = re.search(r'budget=([0-9.]+)', arg)
+            if _budget_m:
+                result["budget"] = _budget_m.group(1)
+                result["arg"] = re.sub(r'\s*budget=[0-9.]+', '', result["arg"]).strip()
+        elif len(parts) >= 1 and parts[-1] in ("synthesize", "synth"):
+            result["mode"] = "synthesize"
+            result["arg"] = " ".join(parts[:-1]) if len(parts) > 1 else None
         elif len(parts) >= 2 and parts[-1] == "oracle":
             result["mode"] = "oracle"
             result["arg"] = " ".join(parts[:-1])
@@ -4786,6 +5139,11 @@ class PrismREPL:
         mode = parsed["mode"]
         arg = parsed["arg"]
 
+        # Synthesize doesn't need a file — runs on accumulated findings
+        if mode == "synthesize":
+            self._run_synthesize()
+            return
+
         if not arg:
             print(f"{C.YELLOW}Usage: /scan <file|dir|text> "
                   f"[full|3way|behavioral|smart|subsystem|prereq|dispute|reflect|verified|l12g|gaps|evolve|discover|explain|target=\"...\"|optimize=\"...\"]  "
@@ -4818,14 +5176,11 @@ class PrismREPL:
                     "content": project_map, "name": dir_name,
                     "general": True, "file_arg": None}
                 # Model override (e.g. nuclear → opus)
-                prev_model = None
                 model_override = parsed.get("model_override")
                 if model_override:
-                    prev_model = self.session.model
-                    self.session.model = model_override
                     print(f"{C.BOLD}{C.CYAN}Model → "
                           f"{model_override}{C.RESET}")
-                try:
+                with self._temporary_model(model_override):
                     if mode == "discover":
                         self._run_discover(
                             project_map, dir_name, general=True)
@@ -4885,14 +5240,6 @@ class PrismREPL:
                             expand_mode=parsed["expand_mode"],
                             general=True,
                             refresh=parsed["refresh"])
-                finally:
-                    # Guard: Always restore model if override was attempted, even on exception.
-                    # Prevents user's model getting stuck on expensive Opus after nuclear crash.
-                    # Check model_override (override was set) not prev_model (which could be falsy).
-                    if model_override and prev_model:
-                        self.session.model = prev_model
-                        print(f"{C.DIM}Model restored → "
-                              f"{prev_model}{C.RESET}")
                 return
             if mode in ("fix",):
                 print(f"{C.YELLOW}Fix mode requires a file, "
@@ -5078,14 +5425,11 @@ class PrismREPL:
             "file_arg": input_arg if is_file else None}
 
         # Model override (e.g. nuclear → opus)
-        prev_model = None
         model_override = parsed.get("model_override")
         if model_override:
-            prev_model = self.session.model
-            self.session.model = model_override
             print(f"{C.BOLD}{C.CYAN}Model → {model_override}{C.RESET}")
 
-        try:
+        with self._temporary_model(model_override):
             if mode == "fix":
                 if not is_file:
                     print(f"{C.YELLOW}Fix mode requires a file "
@@ -5170,6 +5514,14 @@ class PrismREPL:
             elif mode == "evolve":
                 self._run_evolve(
                     content, name, general=general)
+            elif mode == "adaptive":
+                _budget = parsed.get("budget")
+                self._run_adaptive(
+                    content, name, general=general,
+                    budget=float(_budget) if _budget else None)
+            elif mode == "synthesize":
+                self._run_synthesize()
+                return  # synthesize doesn't need file content
             elif mode == "strategist":
                 self._run_strategist(
                     content, name, general=general)
@@ -5207,15 +5559,12 @@ class PrismREPL:
                     print(f"  {C.DIM}Reading prior findings "
                           f"({len(_analysis.split())}w)"
                           f"{C.RESET}")
-                    _vc_model = self._get_prism_model(
-                        "verify_claims") or "sonnet"
-                    saved = self.session.model
-                    self.session.model = MODEL_MAP.get(
-                        _vc_model, _vc_model)
-                    self._run_single_prism_streaming(
-                        "verify_claims", _analysis,
-                        name, general=True)
-                    self.session.model = saved
+                    with self._temporary_model(
+                            self._get_prism_model(
+                                "verify_claims") or "sonnet"):
+                        self._run_single_prism_streaming(
+                            "verify_claims", _analysis,
+                            name, general=True)
                 else:
                     print(f"{C.YELLOW}No prior findings "
                           f"for {name}. Run /scan first."
@@ -5225,15 +5574,12 @@ class PrismREPL:
                       f"{name} ──{C.RESET}")
                 print(f"  {C.DIM}5-phase: depth → type → "
                       f"correct → reflect → harvest{C.RESET}")
-                saved = self.session.model
-                _orc = self._get_prism_model(
-                    "oracle") or "sonnet"
-                self.session.model = MODEL_MAP.get(
-                    _orc, _orc)
-                output = self._run_single_prism_streaming(
-                    "oracle", content, name,
-                    general=general)
-                self.session.model = saved
+                with self._temporary_model(
+                        self._get_prism_model(
+                            "oracle") or "sonnet"):
+                    output = self._run_single_prism_streaming(
+                        "oracle", content, name,
+                        general=general)
                 if output and output.strip():
                     self._save_deep_finding(
                         name, "oracle", output)
@@ -5274,53 +5620,50 @@ class PrismREPL:
                               f"is stochastic on Haiku (P173). "
                               f"Sonnet recommended.{C.RESET}")
                     # Use optimal model for known prisms, unless user overrode
-                    _opt = self._get_prism_model(prism_override)
-                    if _opt and not model_override:
-                        _opt_resolved = MODEL_MAP.get(_opt, _opt)
-                        _prev = self.session.model
-                        self.session.model = _opt_resolved
-                    else:
-                        _opt, _prev = None, None
+                    _opt = (self._get_prism_model(prism_override)
+                            if not model_override else None)
                     print(f"{C.CYAN}Structural analysis "
                           f"({prism_override}){C.RESET}")
-                    self._run_single_prism_streaming(
-                        prism_override, content, name, general=general)
-                    if _opt and _prev:
-                        self.session.model = _prev
+                    with self._temporary_model(_opt):
+                        self._run_single_prism_streaming(
+                            prism_override, content, name, general=general)
                 elif is_file:
                     # L12 optimal model: Sonnet (validated 9.3 avg vs Haiku 8.5)
-                    if not model_override:
-                        _opt_l12 = MODEL_MAP.get(
-                            self._get_prism_model("l12") or "sonnet",
-                            "sonnet")
-                        _prev_l12 = self.session.model
-                        self.session.model = _opt_l12
+                    _opt_l12 = ((self._get_prism_model("l12") or "sonnet")
+                                if not model_override else None)
+                    # C1: Show predictor confidence for transparency
+                    _l12_text = self._load_prism("l12") or ""
+                    if _l12_text:
+                        _p, _f = predict_single_shot(
+                            _l12_text, content,
+                            _opt_l12 or self.session.model or "sonnet")
+                        print(f"{C.CYAN}L12 structural analysis"
+                              f" ({_opt_l12 or 'sonnet'})"
+                              f" P={_p:.0%}{C.RESET}")
                     else:
-                        _prev_l12 = None
-                    print(f"{C.CYAN}L12 structural analysis"
-                          f" ({self._get_prism_model('l12') or 'sonnet'})"
-                          f"{C.RESET}")
-                    self._run_single_prism_streaming(
-                        "l12", content, name, general=general)
-                    if _prev_l12:
-                        self.session.model = _prev_l12
+                        print(f"{C.CYAN}L12 structural analysis"
+                              f" ({_opt_l12 or 'sonnet'}){C.RESET}")
+                    with self._temporary_model(_opt_l12):
+                        self._run_single_prism_streaming(
+                            "l12", content, name, general=general)
                 else:
                     _m = self.session.model or ""
                     _sonnet = any(x in _m for x in ("sonnet", "opus"))
                     _prism = "l12_universal" if _sonnet else "deep_scan"
                     _label = "l12_universal" if _sonnet else "SDL"
-                    print(f"{C.CYAN}{_label} structural analysis{C.RESET}")
+                    # C1: Show predictor for non-code too
+                    _nc_text = self._load_prism(_prism) or ""
+                    if _nc_text:
+                        _p, _ = predict_single_shot(
+                            _nc_text, content,
+                            self._get_prism_model(_prism) or "sonnet")
+                        print(f"{C.CYAN}{_label} structural analysis"
+                              f" P={_p:.0%}{C.RESET}")
+                    else:
+                        print(f"{C.CYAN}{_label} structural analysis"
+                              f"{C.RESET}")
                     self._run_single_prism_streaming(
                         _prism, content, name, general=general)
-        finally:
-            # Guard: Always restore model if override was attempted, even on exception.
-            # Prevents user's model getting stuck on expensive Opus after nuclear crash.
-            # Check model_override (override was set) not prev_model (which could be falsy).
-            if model_override and prev_model:
-                self.session.model = prev_model
-                print(f"{C.DIM}Model restored → "
-                      f"{prev_model}{C.RESET}")
-
         if is_file:
             self._suggest_next("scan", {"file": name})
 
@@ -5363,6 +5706,69 @@ class PrismREPL:
         def _model_label(prism_name):
             m = OPTIMAL_PRISM_MODEL.get(prism_name)
             return m if m else "sonnet"
+
+        # ── Session recommendation ──
+        file_ext = file_name.rsplit(".", 1)[-1] if "." in file_name else None
+        rec_prism, rec_conf, rec_reason = (None, 0, "")
+        if hasattr(self, '_session_log'):
+            _yt = self._yield_tracker if hasattr(self, '_yield_tracker') else None
+            rec_prism, rec_conf, rec_reason = self._session_log.recommend_prism(
+                file_name=file_name, file_ext=file_ext, yield_tracker=_yt)
+        if rec_prism and rec_conf > 0:
+            conf_pct = int(rec_conf * 100)
+            print(f"  {C.GREEN}History recommends:{C.RESET} "
+                  f"{rec_prism} ({conf_pct}% confidence, {rec_reason})")
+            print()
+
+        # ── Single-shot prediction ──
+        _default_prism = "l12" if is_code else "deep_scan"
+        _default_text = self._load_prism(_default_prism) or ""
+        if _default_text:
+            _p_ss, _feats = predict_single_shot(
+                _default_text, content, _model_label(_default_prism))
+            print(f"  {C.CYAN}P(single-shot):{C.RESET} "
+                  f"{_p_ss:.0%} for {_default_prism} on {_model_label(_default_prism)} "
+                  f"[imp={_feats['imperative_count']}, "
+                  f"code={_feats['code_ratio']:.0%}]")
+            print()
+
+        # ── Profile intelligence ──
+        _prof_path = self.working_dir / ".deep" / "profile.json"
+        if _prof_path.exists():
+            try:
+                _prof = json.loads(_prof_path.read_text(encoding="utf-8"))
+                _scan_n = _prof.get("scan_count", 0)
+                _laws = _prof.get("conservation_laws", [])
+                _files = _prof.get("files_analyzed", [])
+                if _scan_n > 0:
+                    print(f"  {C.CYAN}Profile:{C.RESET} "
+                          f"{_scan_n} prior scans, "
+                          f"{len(_laws)} conservation laws, "
+                          f"{len(_files)} files analyzed")
+                    if _laws:
+                        print(f"    {C.DIM}Latest law: "
+                              f"{_laws[-1][:80]}{C.RESET}")
+                    print()
+            except (ValueError, OSError):
+                pass
+
+        # ── Pending hypotheses ──
+        _hyp_path = self.working_dir / ".deep" / "hypotheses.json"
+        if _hyp_path.exists():
+            try:
+                _hyps = json.loads(_hyp_path.read_text(encoding="utf-8"))
+                _unverified = [h for h in _hyps if not h.get("verified")]
+                if _unverified:
+                    print(f"  {C.CYAN}Unverified hypotheses:{C.RESET} "
+                          f"{len(_unverified)}")
+                    for h in _unverified[:3]:
+                        print(f"    {C.DIM}- {h['hypothesis'][:80]}"
+                              f"{C.RESET}")
+                    print(f"    {C.DIM}Verify with: /scan <file> "
+                          f"target=\"<hypothesis>\"{C.RESET}")
+                    print()
+            except (ValueError, OSError):
+                pass
 
         # ── Available modes ──
         print(f"{C.BOLD}Available modes:{C.RESET}\n")
@@ -6262,6 +6668,27 @@ class PrismREPL:
             chain = step["chain"]
             optimal_model = self._get_prism_model(prism_name) or "sonnet"
 
+            # A3: Conditional pipeline step — skip if condition not met
+            condition = step.get("condition")
+            if condition:
+                if condition == "has_l12" and "l12" not in outputs:
+                    print(f"  {C.DIM}Skipping {role} — "
+                          f"L12 output required{C.RESET}")
+                    continue
+                if condition == "has_security_keywords":
+                    _security = any(k in content.lower() for k in
+                                    ("auth", "token", "password", "secret",
+                                     "permission", "role", "csrf", "xss",
+                                     "inject", "sanitiz", "encrypt"))
+                    if not _security:
+                        print(f"  {C.DIM}Skipping {role} — "
+                              f"no security signals{C.RESET}")
+                        continue
+                if condition == "large_file" and len(content) < 5000:
+                    print(f"  {C.DIM}Skipping {role} — "
+                          f"file too small ({len(content)} chars){C.RESET}")
+                    continue
+
             # Resolve model: use optimal (dict or frontmatter), mapped through MODEL_MAP
             resolved_model = MODEL_MAP.get(optimal_model, optimal_model)
 
@@ -6295,39 +6722,22 @@ class PrismREPL:
                 if len(msg) > 100_000:
                     msg = msg[:100_000] + "\n\n[... truncated due to size ...]"
 
-            # Override model for this step
-            prev_model = self.session.model
-            self.session.model = resolved_model
-
-            label = f"{role} ({prism_name}) ── {file_name}"
             print(f"\n{C.BOLD}{C.BLUE}── {role} ── "
                   f"{file_name} ── {C.DIM}{optimal_model}{C.RESET}")
 
-            try:
-                backend = ClaudeBackend(
-                    model=self.session.model,
-                    working_dir=str(self.working_dir),
-                    system_prompt=prompt,
-                    tools=False,
-                )
-                output = self._stream_and_capture(backend, msg)
-            finally:
-                self.session.model = prev_model
+            output = self._execute_prism(
+                system_prompt=prompt,
+                message=msg,
+                model=optimal_model,
+                file_name=file_name,
+                prism_name=f"full_{prism_name}",
+                intent=f"full:{role.lower()}",
+                mode="full_static",
+            )
 
             if output and output.strip() and not self._interrupted:
                 outputs[prism_name] = output
                 output_list.append((step, output))
-                self._save_deep_finding(
-                    file_name, f"full_{prism_name}", output)
-                self._session_log.append(
-                    operation="analyze",
-                    intent=f"full:{role.lower()}",
-                    file_name=file_name,
-                    lens=prism_name,
-                    model=optimal_model,
-                    mode="full_static",
-                    findings_summary=output[:200] if output else None,
-                )
             elif not self._interrupted and not output:
                 print(f"  {C.YELLOW}⚠ {role} returned empty — "
                       f"continuing{C.RESET}")
@@ -6431,20 +6841,18 @@ class PrismREPL:
                 if len(msg) > 100_000:
                     msg = msg[:100_000] + "\n\n[... truncated due to size ...]"
 
-            print(f"\n{C.BOLD}{C.BLUE}── {role} ── "
-                  f"{file_name} ──{C.RESET}")
-            backend = ClaudeBackend(
-                model=self.session.model,
-                working_dir=str(self.working_dir),
+            output = self._execute_prism(
                 system_prompt=prism["prompt"],
-                tools=False,
+                message=msg,
+                label=f"{role} ── {file_name}",
+                file_name=file_name,
+                prism_name=f"full_{prism['name']}",
+                intent=f"full_cooked:{role.lower()}",
+                mode="full_cooked",
             )
-            output = self._stream_and_capture(backend, msg)
 
             if output and not self._interrupted:
                 outputs.append(output)
-                self._save_deep_finding(
-                    file_name, f"full_{prism['name']}", output)
             if not output or self._interrupted:
                 if not self._interrupted and not output:
                     print(f"  {C.YELLOW}⚠ {role} returned empty — "
@@ -6541,20 +6949,18 @@ class PrismREPL:
             role = op.get("role", op["name"])
             msg = f"Analyze this input.\n\n{content}"
 
-            print(f"\n{C.BOLD}{C.BLUE}── {role} ── "
-                  f"{file_name} ──{C.RESET}")
-            backend = ClaudeBackend(
-                model=self.session.model,
-                working_dir=str(self.working_dir),
+            output = self._execute_prism(
                 system_prompt=op["prompt"],
-                tools=False,
+                message=msg,
+                label=f"{role} ── {file_name}",
+                file_name=file_name,
+                prism_name=f"3way_{op['name']}",
+                intent=f"3way:{role.lower()}",
+                mode="3way",
             )
-            output = self._stream_and_capture(backend, msg)
 
             if output and not self._interrupted:
                 op_outputs.append(output)
-                self._save_deep_finding(
-                    file_name, f"3way_{op['name']}", output)
             if not output or self._interrupted:
                 if not self._interrupted and not output:
                     print(f"  {C.YELLOW}Warning: {role} returned empty — "
@@ -6581,22 +6987,20 @@ class PrismREPL:
                 msg = msg[:100_000] + (
                     "\n\n[... truncated due to size ...]")
 
-            print(f"\n{C.BOLD}{C.BLUE}── {role} ── "
-                  f"{file_name} ──{C.RESET}")
             # Synthesis uses Sonnet for quality (P195)
-            synth_model = "sonnet"
-            backend = ClaudeBackend(
-                model=synth_model,
-                working_dir=str(self.working_dir),
+            synth_output = self._execute_prism(
                 system_prompt=synthesis["prompt"],
-                tools=False,
+                message=msg,
+                model="sonnet",
+                label=f"{role} ── {file_name}",
+                file_name=file_name,
+                prism_name="3way_synthesis",
+                intent="3way:synthesis",
+                mode="3way",
             )
-            synth_output = self._stream_and_capture(backend, msg)
 
             if synth_output:
                 op_outputs.append(synth_output)
-                self._save_deep_finding(
-                    file_name, "3way_synthesis", synth_output)
 
         # Save combined output
         all_prisms = operations[:len(op_outputs)]
@@ -6651,25 +7055,20 @@ class PrismREPL:
         # Phase 1: Run all 4 behavioral prisms independently
         # Use optimal model per-prism (same pattern as full pipeline)
         outputs = {}
-        saved_model = self.session.model
         for prism_name, role in prisms:
             if self._interrupted:
                 break
-            # Switch to optimal model for this prism
-            optimal = self._get_prism_model(prism_name)
-            if optimal:
-                self.session.model = MODEL_MAP.get(optimal, optimal)
-            label = f"{role} ({prism_name}) ── {file_name}"
-            output = self._run_single_prism_streaming(
-                prism_name, content, file_name,
-                label=label, general=general,
-                intent=f"behavioral:{role.lower()}")
-            if output and output.strip():
-                outputs[role] = output
-            elif not self._interrupted:
-                print(f"  {C.YELLOW}⚠ {role} returned empty — "
-                      f"skipping{C.RESET}")
-        self.session.model = saved_model
+            with self._temporary_model(self._get_prism_model(prism_name)):
+                label = f"{role} ({prism_name}) ── {file_name}"
+                output = self._run_single_prism_streaming(
+                    prism_name, content, file_name,
+                    label=label, general=general,
+                    intent=f"behavioral:{role.lower()}")
+                if output and output.strip():
+                    outputs[role] = output
+                elif not self._interrupted:
+                    print(f"  {C.YELLOW}⚠ {role} returned empty — "
+                          f"skipping{C.RESET}")
 
         if len(outputs) < 2:
             print(f"{C.RED}Behavioral pipeline needs at least 2 "
@@ -6685,15 +7084,12 @@ class PrismREPL:
             synth_input_parts.append(f"## {role}\n\n{out}")
         synth_content = "\n\n---\n\n".join(synth_input_parts)
 
-        _synth_opt = self._get_prism_model("behavioral_synthesis")
-        if _synth_opt:
-            self.session.model = MODEL_MAP.get(_synth_opt, _synth_opt)
-        synth_output = self._run_single_prism_streaming(
-            "behavioral_synthesis", synth_content, file_name,
-            label=f"SYNTHESIS ── {file_name}",
-            general=True,  # synthesis input is analysis text, not code
-            intent="behavioral:synthesis")
-        self.session.model = saved_model
+        with self._temporary_model(self._get_prism_model("behavioral_synthesis")):
+            synth_output = self._run_single_prism_streaming(
+                "behavioral_synthesis", synth_content, file_name,
+                label=f"SYNTHESIS ── {file_name}",
+                general=True,  # synthesis input is analysis text, not code
+                intent="behavioral:synthesis")
 
         # Phase 3: Save combined output
         combined_parts = [f"# Behavioral Pipeline: {file_name}\n"]
@@ -6731,16 +7127,12 @@ class PrismREPL:
         producing genuine meta-insights about what the analysis
         itself conceals. Two calls for recursive depth.
         """
-        saved_model = self.session.model
-
         # Phase 1: L12 structural analysis
         print(f"\n{C.BOLD}{C.BLUE}── Phase 1: L12 structural "
               f"analysis ── {file_name} ──{C.RESET}")
-        _l12_opt = self._get_prism_model("l12") or "sonnet"
-        self.session.model = MODEL_MAP.get(_l12_opt, _l12_opt)
-        l12_output = self._run_single_prism_streaming(
-            "l12", content, file_name, general=general)
-        self.session.model = saved_model
+        with self._temporary_model(self._get_prism_model("l12") or "sonnet"):
+            l12_output = self._run_single_prism_streaming(
+                "l12", content, file_name, general=general)
 
         if not l12_output or not l12_output.strip():
             print(f"{C.RED}L12 returned empty — cannot run "
@@ -6753,13 +7145,11 @@ class PrismREPL:
               f"{C.RESET}")
         print(f"  {C.DIM}Analyzing what the analysis itself "
               f"conceals...{C.RESET}")
-        _claim_opt = self._get_prism_model("claim") or "haiku"
-        self.session.model = MODEL_MAP.get(_claim_opt, _claim_opt)
-        meta_output = self._run_single_prism_streaming(
-            "claim", l12_output, file_name,
-            label=f"META ── {file_name}",
-            general=True)  # L12 output is text, not code
-        self.session.model = saved_model
+        with self._temporary_model(self._get_prism_model("claim") or "haiku"):
+            meta_output = self._run_single_prism_streaming(
+                "claim", l12_output, file_name,
+                label=f"META ── {file_name}",
+                general=True)  # L12 output is text, not code
 
         # Save combined output
         combined = (f"## L12 STRUCTURAL ANALYSIS\n\n{l12_output}\n\n"
@@ -6789,16 +7179,12 @@ class PrismREPL:
         B5: Like meta, but adds constraint history and learning memory
         to produce a summary of recurring patterns and unexplored dimensions.
         """
-        saved_model = self.session.model
-
         # Phase 1: L12 structural analysis
         print(f"\n{C.BOLD}{C.BLUE}── Phase 1: L12 structural "
               f"analysis ── {file_name} ──{C.RESET}")
-        _l12_opt = self._get_prism_model("l12") or "sonnet"
-        self.session.model = MODEL_MAP.get(_l12_opt, _l12_opt)
-        l12_output = self._run_single_prism_streaming(
-            "l12", content, file_name, general=general)
-        self.session.model = saved_model
+        with self._temporary_model(self._get_prism_model("l12") or "sonnet"):
+            l12_output = self._run_single_prism_streaming(
+                "l12", content, file_name, general=general)
 
         if not l12_output or not l12_output.strip():
             print(f"{C.RED}L12 returned empty — cannot run "
@@ -6809,13 +7195,11 @@ class PrismREPL:
         print(f"\n{C.BOLD}{C.BLUE}── Phase 2: Meta-analysis "
               f"(claim prism on L12 output) ── {file_name} ──"
               f"{C.RESET}")
-        _claim_opt = self._get_prism_model("claim") or "haiku"
-        self.session.model = MODEL_MAP.get(_claim_opt, _claim_opt)
-        meta_output = self._run_single_prism_streaming(
-            "claim", l12_output, file_name,
-            label=f"META ── {file_name}",
-            general=True)
-        self.session.model = saved_model
+        with self._temporary_model(self._get_prism_model("claim") or "haiku"):
+            meta_output = self._run_single_prism_streaming(
+                "claim", l12_output, file_name,
+                label=f"META ── {file_name}",
+                general=True)
 
         # Phase 3: Load constraint history and produce constraint summary
         print(f"\n{C.BOLD}{C.BLUE}── Phase 3: Constraint "
@@ -6889,20 +7273,15 @@ class PrismREPL:
         # Sonnet for reflect synthesis. Opus is optimal per grid but
         # times out on large inputs (proven VPS test). Sonnet produces
         # equivalent quality on synthesis tasks ("Ontology Blindness").
-        _synth_model = "sonnet"
-        self.session.model = MODEL_MAP.get(
-            _synth_model, _synth_model)
-        backend = ClaudeBackend(
-            model=self.session.model,
-            working_dir=str(self.working_dir),
+        synth_output = self._execute_prism(
             system_prompt=(
                 "You are a structural analyst synthesizing "
                 "prior analyses into actionable constraints."),
-            tools=False,
+            message=synth_input,
+            model="sonnet",
+            label=f"CONSTRAINT SYNTHESIS ── {file_name}",
+            save=False,
         )
-        synth_output = self._stream_and_capture(
-            backend, synth_input)
-        self.session.model = saved_model
 
         # Save combined output
         combined = (
@@ -6944,27 +7323,23 @@ class PrismREPL:
         print(f"  {C.DIM}3-call: {prism_a} vs {prism_b} → "
               f"disagreement synthesis{C.RESET}")
 
-        saved_model = self.session.model
-
         # Run prism A
         print(f"\n{C.BOLD}Lens A: {prism_a}{C.RESET}")
-        _a_model = self._get_prism_model(prism_a) or "sonnet"
-        self.session.model = MODEL_MAP.get(_a_model, _a_model)
-        output_a = self._run_single_prism_streaming(
-            prism_a, content, file_name,
-            label=f"LENS A ({prism_a}) ── {file_name}",
-            general=general)
+        with self._temporary_model(
+                self._get_prism_model(prism_a) or "sonnet"):
+            output_a = self._run_single_prism_streaming(
+                prism_a, content, file_name,
+                label=f"LENS A ({prism_a}) ── {file_name}",
+                general=general)
 
         # Run prism B
         print(f"\n{C.BOLD}Lens B: {prism_b}{C.RESET}")
-        _b_model = self._get_prism_model(prism_b) or "sonnet"
-        self.session.model = MODEL_MAP.get(_b_model, _b_model)
-        output_b = self._run_single_prism_streaming(
-            prism_b, content, file_name,
-            label=f"LENS B ({prism_b}) ── {file_name}",
-            general=general)
-
-        self.session.model = saved_model
+        with self._temporary_model(
+                self._get_prism_model(prism_b) or "sonnet"):
+            output_b = self._run_single_prism_streaming(
+                prism_b, content, file_name,
+                label=f"LENS B ({prism_b}) ── {file_name}",
+                general=general)
 
         if not output_a or not output_b:
             print(f"{C.RED}One or both prisms returned empty"
@@ -6986,19 +7361,13 @@ class PrismREPL:
 
         # Sonnet for dispute synthesis. Opus times out on 2-analysis
         # inputs (proven: empty synthesis on VPS). Sonnet works.
-        _synth_model = "sonnet"
-        self.session.model = MODEL_MAP.get(
-            _synth_model, _synth_model)
-
-        # Use streaming for synthesis (handles large context better)
-        backend = ClaudeBackend(
-            model=self.session.model,
-            working_dir=str(self.working_dir),
+        synth = self._execute_prism(
             system_prompt=DISPUTE_SYNTHESIS_PROMPT,
-            tools=False,
+            message=synth_input,
+            model="sonnet",
+            label=f"DISPUTE SYNTHESIS ── {file_name}",
+            save=False,
         )
-        synth = self._stream_and_capture(backend, synth_input)
-        self.session.model = saved_model
 
         # Save all outputs
         combined = (
@@ -7029,38 +7398,34 @@ class PrismREPL:
         print(f"  {C.DIM}3 generations: cook → cook → cook "
               f"→ save domain-adapted prism{C.RESET}")
 
-        saved_model = self.session.model
-        self.session.model = MODEL_MAP.get(COOK_MODEL, COOK_MODEL)
-
         current_input = content[:5000]
-        for gen in range(1, 4):
-            if self._interrupted:
-                break
-            print(f"  {C.DIM}Generation {gen}/3...{C.RESET}",
-                  end="", flush=True)
-            cook_prompt = COOK_UNIVERSAL.format(
-                intent="generate the best possible analytical "
-                       "prism for this input")
-            raw = self._claude.call(
-                cook_prompt, current_input,
-                model=COOK_MODEL, timeout=120)
-            prism_data = _parse_prism_json(raw)
-            if prism_data and prism_data.get("prompt"):
-                words = len(prism_data["prompt"].split())
-                name = prism_data.get("name", f"gen{gen}")
-                print(f" {name} ({words}w)")
-                current_input = prism_data["prompt"]
-            elif raw and len(raw.strip()) > 50:
-                # Cook returned text but not parseable JSON.
-                # Use the raw text as a prism prompt directly.
-                words = len(raw.split())
-                print(f" raw ({words}w)")
-                current_input = raw.strip()
-            else:
-                print(f" {C.YELLOW}cook failed{C.RESET}")
-                break
-
-        self.session.model = saved_model
+        with self._temporary_model(COOK_MODEL):
+            for gen in range(1, 4):
+                if self._interrupted:
+                    break
+                print(f"  {C.DIM}Generation {gen}/3...{C.RESET}",
+                      end="", flush=True)
+                cook_prompt = COOK_UNIVERSAL.format(
+                    intent="generate the best possible analytical "
+                           "prism for this input")
+                raw = self._claude.call(
+                    cook_prompt, current_input,
+                    model=COOK_MODEL, timeout=120)
+                prism_data = _parse_prism_json(raw)
+                if prism_data and prism_data.get("prompt"):
+                    words = len(prism_data["prompt"].split())
+                    name = prism_data.get("name", f"gen{gen}")
+                    print(f" {name} ({words}w)")
+                    current_input = prism_data["prompt"]
+                elif raw and len(raw.strip()) > 50:
+                    # Cook returned text but not parseable JSON.
+                    # Use the raw text as a prism prompt directly.
+                    words = len(raw.split())
+                    print(f" raw ({words}w)")
+                    current_input = raw.strip()
+                else:
+                    print(f" {C.YELLOW}cook failed{C.RESET}")
+                    break
 
         if current_input and current_input != content[:5000]:
             # Save the evolved prism
@@ -7106,6 +7471,261 @@ class PrismREPL:
             mode="evolve",
         )
 
+    def _run_adaptive(self, content, file_name, general=False,
+                       budget=None):
+        """Adaptive depth: automatically escalate from cheap/fast to deep.
+
+        Stage 1: SDL deep_scan (~$0.01, Haiku) — fast conservation law
+        Stage 2: L12 (~$0.05, Sonnet) — if SDL signal is weak
+        Stage 3: Full pipeline (~$0.50) — if L12 signal is still weak
+
+        Signal quality = conservation law presence + output depth.
+        Stops at first stage that produces sufficient analytical depth.
+        Budget (optional): max cost in USD. Skips stages that exceed budget.
+        """
+        # A2: Cost estimates per stage
+        stage_costs = {"deep_scan": 0.02, "l12": 0.06, "full": 0.50}
+        spent = 0.0
+        stages = [
+            ("deep_scan", "SDL Quick Scan", 300),
+            ("l12", "L12 Deep", 500),
+        ]
+
+        # Check session log for prism recommendation on similar files
+        file_ext = file_name.rsplit(".", 1)[-1] if "." in file_name else None
+        _yt = self._yield_tracker if hasattr(self, '_yield_tracker') else None
+        rec_prism, rec_conf, rec_reason = self._session_log.recommend_prism(
+            file_name=file_name, file_ext=file_ext, yield_tracker=_yt)
+        if rec_prism and rec_conf >= 0.6 and rec_prism != "deep_scan":
+            # History suggests skipping SDL — go straight to recommended prism
+            print(f"{C.CYAN}Adaptive depth: history recommends "
+                  f"'{rec_prism}' ({rec_reason}){C.RESET}")
+            stages = [s for s in stages if s[0] != "deep_scan"]
+            if rec_prism == "l12":
+                pass  # L12 already in stages
+            elif rec_prism not in [s[0] for s in stages]:
+                # Insert recommended prism before L12
+                stages.insert(0, (rec_prism, f"Recommended: {rec_prism}", 400))
+        else:
+            print(f"{C.CYAN}Adaptive depth: starting with cheapest "
+                  f"analysis...{C.RESET}")
+
+        for i, (prism_name, label, min_words) in enumerate(stages):
+            if self._interrupted:
+                return
+
+            # A2: Budget check — skip stage if it would exceed budget
+            est_cost = stage_costs.get(prism_name, 0.05)
+            if budget is not None and spent + est_cost > budget:
+                print(f"  {C.YELLOW}Budget limit ${budget:.2f} reached "
+                      f"(spent ${spent:.2f}) — stopping{C.RESET}")
+                break
+
+            # Tier 1 predictor: show P(single-shot) for transparency
+            prism_text = self._load_prism(prism_name) or ""
+            model_for_prism = self._get_prism_model(prism_name) or "sonnet"
+            p_ss, feats = predict_single_shot(
+                prism_text, content, model_for_prism)
+            print(f"\n{C.BOLD}{C.BLUE}── Stage {i + 1}: "
+                  f"{label} ── {file_name} ──{C.RESET}")
+            print(f"  {C.DIM}P(single-shot) = {p_ss:.0%}, "
+                  f"est ~${est_cost:.2f} "
+                  f"[imp={feats['imperative_count']}, "
+                  f"code={feats['code_ratio']:.0%}]{C.RESET}")
+
+            cost_before = self.session.total_cost_usd
+            with self._temporary_model(self._get_prism_model(prism_name)):
+                output = self._run_single_prism_streaming(
+                    prism_name, content, file_name,
+                    general=general,
+                    intent=f"adaptive:stage{i + 1}")
+            spent += self.session.total_cost_usd - cost_before
+
+            if not output or not output.strip():
+                print(f"  {C.YELLOW}Stage {i + 1} empty — "
+                      f"escalating...{C.RESET}")
+                continue
+
+            # Quality signals: conservation law + sufficient depth
+            has_law = bool(re.search(
+                r'[Cc]onservation\s+[Ll]aw|×\s*.*=\s*constant|'
+                r'[Cc]onserved|invariant', output))
+            word_count = len(output.split())
+            has_depth = word_count >= min_words
+            # Structure markers boost confidence but aren't required.
+            # Flowing prose analysis (no markdown) is still valid if deep enough.
+            has_structure = (
+                output.count("##") >= 2
+                or output.count("**") >= 4
+                or bool(re.search(r'\d+\.\s', output))
+            )
+            # Sufficient = law + depth. Structure is bonus (raises threshold).
+            # Without structure, require 50% more words to compensate.
+            if has_structure:
+                quality_ok = has_law and has_depth
+            else:
+                quality_ok = has_law and word_count >= int(min_words * 1.5)
+
+            if quality_ok:
+                print(f"\n{C.GREEN}Adaptive: sufficient depth at "
+                      f"Stage {i + 1} ({label}) — "
+                      f"{word_count}w, conservation law found"
+                      f"{C.RESET}")
+                self._session_log.append(
+                    operation="adaptive",
+                    file_name=file_name,
+                    lens=prism_name,
+                    model=self.session.model,
+                    mode="adaptive",
+                    findings_summary=(
+                        f"Stage {i + 1}/{len(stages) + 1}: "
+                        f"{word_count}w, law={'yes' if has_law else 'no'}"),
+                )
+                return
+
+            print(f"  {C.DIM}Stage {i + 1}: {word_count}w, "
+                  f"law={'yes' if has_law else 'no'} — "
+                  f"escalating...{C.RESET}")
+
+        # Stage 3: Full pipeline (last resort)
+        if not self._interrupted:
+            if budget is not None and spent + stage_costs["full"] > budget:
+                print(f"  {C.YELLOW}Budget ${budget:.2f} prevents "
+                      f"full pipeline (~${stage_costs['full']:.2f}). "
+                      f"Spent ${spent:.2f} so far.{C.RESET}")
+                return
+            print(f"\n{C.BOLD}{C.BLUE}── Stage 3: Full Pipeline ── "
+                  f"{file_name} ──{C.RESET}")
+            print(f"  {C.DIM}Prior stages insufficient — "
+                  f"running full analysis (est ~${stage_costs['full']:.2f})"
+                  f"{C.RESET}")
+            self._run_full_pipeline(content, file_name, general=general)
+
+    def _run_synthesize(self, content=None, file_name=None, general=False):
+        """Cross-session pattern synthesis: aggregate findings across files.
+
+        Reads all .deep/findings/*.md files and runs a synthesis pass
+        to detect project-wide patterns that no single-file scan can see:
+        repeated anti-patterns, systemic conservation laws, architectural
+        issues that span multiple files.
+        """
+        findings_dir = self.working_dir / ".deep" / "findings"
+        if not findings_dir.exists():
+            print(f"{C.RED}No findings directory — run /scan first{C.RESET}")
+            return
+
+        # Collect all findings
+        finding_files = sorted(findings_dir.glob("*.md"))
+        if not finding_files:
+            print(f"{C.RED}No findings to synthesize — "
+                  f"run /scan on some files first{C.RESET}")
+            return
+
+        # Build summary of each finding (first 500 words)
+        summaries = []
+        for fpath in finding_files:
+            try:
+                text = fpath.read_text(encoding="utf-8")
+                words = text.split()[:500]
+                summary = " ".join(words)
+                if len(words) == 500:
+                    summary += "..."
+                summaries.append(
+                    f"## {fpath.stem}\n\n{summary}")
+            except (OSError, UnicodeDecodeError):
+                continue
+
+        if len(summaries) < 2:
+            print(f"{C.YELLOW}Need findings from at least 2 files "
+                  f"for synthesis (have {len(summaries)}){C.RESET}")
+            return
+
+        print(f"{C.CYAN}Cross-session synthesis: "
+              f"{len(summaries)} findings{C.RESET}")
+
+        synth_prompt = (
+            "You are a structural analyst finding patterns that SPAN "
+            "multiple files in the same project. You receive summaries "
+            "of prior structural analyses.\n\n"
+            "Execute every step. Output the complete analysis.\n\n"
+            "## CROSS-FILE PATTERNS\n"
+            "Which structural properties appear in 2+ files? For each "
+            "pattern: which files, what's the shared cause, what "
+            "project-wide change would address all instances.\n\n"
+            "## PROJECT-WIDE CONSERVATION LAW\n"
+            "Derive the conservation law that governs the ENTIRE "
+            "project — the trade-off that every file independently "
+            "discovers. Name it: A × B = constant.\n\n"
+            "## SYSTEMIC RISKS\n"
+            "Which findings from individual files combine to create "
+            "risks that no single-file analysis could detect? Name "
+            "the emergent risk and which files contribute.\n\n"
+            "## UNEXPLORED INTERSECTIONS\n"
+            "Which pairs of files have NOT been analyzed together but "
+            "likely share structural properties based on their "
+            "individual findings?")
+
+        synth_content = "\n\n---\n\n".join(summaries)
+        if len(synth_content) > 80_000:
+            synth_content = (synth_content[:80_000]
+                             + "\n\n[... truncated ...]")
+
+        output = self._execute_prism(
+            system_prompt=synth_prompt,
+            message=synth_content,
+            model="sonnet",
+            label=f"PROJECT SYNTHESIS ── {len(summaries)} files",
+            file_name="project_synthesis",
+            prism_name="synthesize",
+            intent="synthesize",
+            mode="synthesize",
+        )
+
+        if output and output.strip():
+            print(f"\n{C.GREEN}Synthesis complete: "
+                  f"{len(output.split())}w across "
+                  f"{len(summaries)} files{C.RESET}")
+
+            # A4: Extract hypotheses that could be verified by re-scanning
+            hypotheses = re.findall(
+                r'(?:Hypothesis|hypothesis|HYPOTHESIS)[:\s]+(.+?)(?:\n|$)',
+                output)
+            intersections = re.findall(
+                r'(?:should intersect|likely share|analysis would reveal)[:\s]*(.+?)(?:\n|$)',
+                output)
+            risks = re.findall(
+                r'(?:Emergent risk|systemic risk|RISK)[:\s]+(.+?)(?:\n|$)',
+                output, re.IGNORECASE)
+
+            verifiable = hypotheses + intersections + risks
+            if verifiable:
+                print(f"\n  {C.CYAN}Verifiable hypotheses found: "
+                      f"{len(verifiable)}{C.RESET}")
+                for i, h in enumerate(verifiable[:5], 1):
+                    print(f"    {i}. {h[:100].strip()}")
+                print(f"  {C.DIM}Run /scan <file> target=\"<hypothesis>\" "
+                      f"to verify{C.RESET}")
+
+                # Save hypotheses for future verification
+                hyp_path = self.working_dir / ".deep" / "hypotheses.json"
+                try:
+                    existing = []
+                    if hyp_path.exists():
+                        existing = json.loads(
+                            hyp_path.read_text(encoding="utf-8"))
+                    for h in verifiable:
+                        existing.append({
+                            "hypothesis": h.strip()[:200],
+                            "source": "synthesis",
+                            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                            "verified": False,
+                        })
+                    hyp_path.write_text(
+                        json.dumps(existing[-50:], indent=2),
+                        encoding="utf-8")
+                except (OSError, ValueError):
+                    pass
+
     def _run_l12g(self, content, file_name, general=False):
         """L12-G: Gap-aware structural analysis in a single pass.
 
@@ -7118,13 +7738,10 @@ class PrismREPL:
         print(f"  {C.DIM}Single-pass: analyze → audit → "
               f"self-correct{C.RESET}")
 
-        saved_model = self.session.model
-        l12g_model = self._get_prism_model("l12g") or "sonnet"
-        self.session.model = MODEL_MAP.get(l12g_model, l12g_model)
-
-        output = self._run_single_prism_streaming(
-            "l12g", content, file_name, general=general)
-        self.session.model = saved_model
+        with self._temporary_model(
+                self._get_prism_model("l12g") or "sonnet"):
+            output = self._run_single_prism_streaming(
+                "l12g", content, file_name, general=general)
 
         if output and output.strip():
             self._save_deep_finding(file_name, "l12g", output)
@@ -7150,43 +7767,38 @@ class PrismREPL:
         print(f"\n{C.BOLD}{C.BLUE}── Gap Detection ── "
               f"{file_name} ──{C.RESET}")
 
-        saved_model = self.session.model
-
         # Phase 1: L12 analysis
         print(f"  {C.DIM}Phase 1: L12 structural analysis...{C.RESET}")
-        l12_model = self._get_prism_model("l12") or "sonnet"
-        self.session.model = MODEL_MAP.get(l12_model, l12_model)
-        l12_output = self._run_single_prism_streaming(
-            "l12", content, file_name, general=general)
+        with self._temporary_model(
+                self._get_prism_model("l12") or "sonnet"):
+            l12_output = self._run_single_prism_streaming(
+                "l12", content, file_name, general=general)
         if not l12_output or not l12_output.strip():
             print(f"{C.RED}L12 returned empty — cannot detect "
                   f"gaps{C.RESET}")
-            self.session.model = saved_model
             return
 
         # Phase 2: Knowledge boundary (classification)
         print(f"\n  {C.DIM}Phase 2: Knowledge boundary "
               f"(classifying claims)...{C.RESET}")
-        kb_model = self._get_prism_model(
-            "knowledge_boundary") or "sonnet"
-        self.session.model = MODEL_MAP.get(kb_model, kb_model)
-        boundary_output = self._run_single_prism_streaming(
-            "knowledge_boundary", l12_output, file_name,
-            label=f"KNOWLEDGE BOUNDARY ── {file_name}",
-            general=True)
+        with self._temporary_model(
+                self._get_prism_model(
+                    "knowledge_boundary") or "sonnet"):
+            boundary_output = self._run_single_prism_streaming(
+                "knowledge_boundary", l12_output, file_name,
+                label=f"KNOWLEDGE BOUNDARY ── {file_name}",
+                general=True)
 
         # Phase 3: Knowledge audit (adversarial)
         print(f"\n  {C.DIM}Phase 3: Knowledge audit "
               f"(attacking claims)...{C.RESET}")
-        ka_model = self._get_prism_model(
-            "knowledge_audit") or "sonnet"
-        self.session.model = MODEL_MAP.get(ka_model, ka_model)
-        audit_output = self._run_single_prism_streaming(
-            "knowledge_audit", l12_output, file_name,
-            label=f"KNOWLEDGE AUDIT ── {file_name}",
-            general=True)
-
-        self.session.model = saved_model
+        with self._temporary_model(
+                self._get_prism_model(
+                    "knowledge_audit") or "sonnet"):
+            audit_output = self._run_single_prism_streaming(
+                "knowledge_audit", l12_output, file_name,
+                label=f"KNOWLEDGE AUDIT ── {file_name}",
+                general=True)
 
         # Save combined output
         combined = (
@@ -7214,15 +7826,14 @@ class PrismREPL:
                     "Extract every knowledge gap as a JSON array. "
                     "For each: claim, type, fill_source, query, "
                     "risk, impact, confidence.")
-                self.session.model = MODEL_MAP.get("haiku", "haiku")
-                gap_json = self._claude.call(
-                    gap_prompt, gap_input,
-                    model="haiku", timeout=60)
-                self.session.model = saved_model
+                with self._temporary_model("haiku"):
+                    gap_json = self._claude.call(
+                        gap_prompt, gap_input,
+                        model="haiku", timeout=60)
                 if gap_json:
                     self._save_gaps_to_kb(file_name, gap_json)
             except Exception:
-                self.session.model = saved_model
+                pass
 
         self._session_log.append(
             operation="gaps",
@@ -7475,16 +8086,11 @@ class PrismREPL:
         print(f"  {C.DIM}Adaptive pipeline: the system "
               f"decides each step.{C.RESET}")
 
-        saved_model = self.session.model
         is_code = not general
 
         # ── Step 1: Prereq — what do we need to know? ──
         print(f"\n{C.BOLD}Step 1: Knowledge prerequisites"
               f"{C.RESET}")
-        _prereq_model = self._get_prism_model(
-            "prereq") or "sonnet"
-        self.session.model = MODEL_MAP.get(
-            _prereq_model, _prereq_model)
         # When analyzing code, frame prereq as "what do I need
         # to know to ANALYZE this code?" not "what task is this?"
         if is_code:
@@ -7495,9 +8101,10 @@ class PrismREPL:
                 f"CODE TO ANALYZE:\n{content[:3000]}")
         else:
             _prereq_input = content
-        prereq_output = self._run_single_prism_streaming(
-            "prereq", _prereq_input, file_name, general=True)
-        self.session.model = saved_model
+        with self._temporary_model(
+                self._get_prism_model("prereq") or "sonnet"):
+            prereq_output = self._run_single_prism_streaming(
+                "prereq", _prereq_input, file_name, general=True)
 
         # Extract questions (reuse prereq's extraction logic)
         _questions = self._extract_questions_from_prereq(
@@ -7532,7 +8139,6 @@ class PrismREPL:
         enriched_content = verified_context + content
 
         if self._interrupted:
-            self.session.model = saved_model
             return
 
         # ── Step 3: Analyze — subsystem or L12 ──
@@ -7549,14 +8155,12 @@ class PrismREPL:
             else:
                 print(f"\n{C.BOLD}Step 3: L12 structural "
                       f"analysis{C.RESET}")
-                _l12_model = self._get_prism_model(
-                    "l12") or "sonnet"
-                self.session.model = MODEL_MAP.get(
-                    _l12_model, _l12_model)
-                self._run_single_prism_streaming(
-                    "l12", enriched_content, file_name,
-                    general=False)
-                self.session.model = saved_model
+                with self._temporary_model(
+                        self._get_prism_model(
+                            "l12") or "sonnet"):
+                    self._run_single_prism_streaming(
+                        "l12", enriched_content, file_name,
+                        general=False)
         else:
             print(f"\n{C.BOLD}Step 3: 3-way analysis "
                   f"(text input){C.RESET}")
@@ -7564,7 +8168,6 @@ class PrismREPL:
                 enriched_content, file_name, general=True)
 
         if self._interrupted:
-            self.session.model = saved_model
             return
 
         # ── Step 4: Dispute — self-correct (adaptive) ──
@@ -7601,7 +8204,6 @@ class PrismREPL:
                   f"(insufficient findings){C.RESET}")
 
         if self._interrupted:
-            self.session.model = saved_model
             return
 
         # ── Step 5: Save profile + seed knowledge ──
@@ -7618,9 +8220,6 @@ class PrismREPL:
               f"({len(_questions)} questions) → "
               f"{'subsystem' if is_code else '3way'} → "
               f"dispute → profile{C.RESET}")
-
-        # Guard: restore model in case any sub-method crashed
-        self.session.model = saved_model
 
         # Convergence detection: check if this scan's conservation
         # law matches prior scans. If so, analysis has converged —
@@ -7996,8 +8595,6 @@ class PrismREPL:
             print(f"    {s['name']} ({s['kind']}, "
                   f"{lines} lines)")
 
-        saved_model = self.session.model
-
         # Phase 2: Calibrate — assign prisms
         print(f"\n{C.BOLD}Phase 2: Assigning prisms{C.RESET}")
         # Build prism catalog from OPTIMAL_PRISM_MODEL
@@ -8028,11 +8625,10 @@ class PrismREPL:
             prism_catalog=_catalog,
             subsystem_summaries=_summaries)
 
-        self.session.model = MODEL_MAP.get("sonnet", "sonnet")
-        _cal_raw = self._claude.call(
-            _cal_prompt, "Assign prisms.",
-            model="sonnet", timeout=30)
-        self.session.model = saved_model
+        with self._temporary_model("sonnet"):
+            _cal_raw = self._claude.call(
+                _cal_prompt, "Assign prisms.",
+                model="sonnet", timeout=30)
 
         # Parse assignments
         import json as _json_sub
@@ -8068,9 +8664,6 @@ class PrismREPL:
             if self._interrupted:
                 break
             prism_name = assignments.get(s["name"], "l12")
-            _opt = self._get_prism_model(
-                prism_name) or "sonnet"
-            self.session.model = MODEL_MAP.get(_opt, _opt)
 
             # Context header
             _header = (
@@ -8079,20 +8672,21 @@ class PrismREPL:
                 f"of {file_name})\n"
                 f"# OTHER SUBSYSTEMS: {_other_names}\n\n")
 
-            output = self._run_single_prism_streaming(
-                prism_name, _header + s["content"],
-                file_name,
-                label=(f"{s['name']} ({prism_name}) "
-                       f"── {file_name}"),
-                general=False)
+            with self._temporary_model(
+                    self._get_prism_model(
+                        prism_name) or "sonnet"):
+                output = self._run_single_prism_streaming(
+                    prism_name, _header + s["content"],
+                    file_name,
+                    label=(f"{s['name']} ({prism_name}) "
+                           f"── {file_name}"),
+                    general=False)
             if output:
                 outputs.append({
                     "subsystem": s["name"],
                     "prism": prism_name,
                     "output": output,
                 })
-
-        self.session.model = saved_model
 
         if not outputs:
             print(f"{C.RED}No subsystem outputs{C.RESET}")
@@ -8111,16 +8705,13 @@ class PrismREPL:
 
         # Sonnet for subsystem synthesis. Opus times out on
         # large multi-subsystem inputs.
-        self.session.model = MODEL_MAP.get("sonnet", "sonnet")
-        backend = ClaudeBackend(
-            model=self.session.model,
-            working_dir=str(self.working_dir),
+        synth = self._execute_prism(
             system_prompt=_synth_prompt,
-            tools=False,
+            message="Synthesize cross-subsystem findings.",
+            model="sonnet",
+            label=f"CROSS-SUBSYSTEM SYNTHESIS ── {file_name}",
+            save=False,
         )
-        synth = self._stream_and_capture(
-            backend, "Synthesize cross-subsystem findings.")
-        self.session.model = saved_model
 
         # Save all
         combined = _sub_outputs
@@ -8232,18 +8823,13 @@ class PrismREPL:
         print(f"  {C.DIM}Phase 1: Identify knowledge gaps. "
               f"Phase 2: Batch query AgentsKB.{C.RESET}")
 
-        saved_model = self.session.model
-
         # Phase 1: Run prereq prism
         print(f"\n{C.BOLD}Phase 1: Knowledge prerequisite "
               f"scan{C.RESET}")
-        _prereq_model = self._get_prism_model(
-            "prereq") or "sonnet"
-        self.session.model = MODEL_MAP.get(
-            _prereq_model, _prereq_model)
-        prereq_output = self._run_single_prism_streaming(
-            "prereq", content, file_name, general=True)
-        self.session.model = saved_model
+        with self._temporary_model(
+                self._get_prism_model("prereq") or "sonnet"):
+            prereq_output = self._run_single_prism_streaming(
+                "prereq", content, file_name, general=True)
 
         if not prereq_output or not prereq_output.strip():
             print(f"{C.RED}Prereq scan returned empty{C.RESET}")
@@ -8381,36 +8967,34 @@ class PrismREPL:
 
         # Step 1: Run gaps pipeline (L12 + boundary + audit)
         # Reuse gaps logic inline to keep outputs accessible
-        saved_model = self.session.model
+        l12_model = self._get_prism_model("l12") or "sonnet"
 
         # L12
         print(f"\n{C.BOLD}Step 1/4: L12 structural analysis"
               f"{C.RESET}")
-        l12_model = self._get_prism_model("l12") or "sonnet"
-        self.session.model = MODEL_MAP.get(l12_model, l12_model)
-        l12_output = self._run_single_prism_streaming(
-            "l12", content, file_name, general=general)
+        with self._temporary_model(l12_model):
+            l12_output = self._run_single_prism_streaming(
+                "l12", content, file_name, general=general)
         if not l12_output or not l12_output.strip():
             print(f"{C.RED}L12 returned empty{C.RESET}")
-            self.session.model = saved_model
             return
 
         # Boundary + Audit on L12 output
         print(f"\n{C.BOLD}Step 2/4: Gap detection "
               f"(boundary + audit){C.RESET}")
-        kb_model = self._get_prism_model(
-            "knowledge_boundary") or "sonnet"
-        self.session.model = MODEL_MAP.get(kb_model, kb_model)
-        boundary = self._run_single_prism_streaming(
-            "knowledge_boundary", l12_output, file_name,
-            label=f"BOUNDARY ── {file_name}", general=True)
+        with self._temporary_model(
+                self._get_prism_model(
+                    "knowledge_boundary") or "sonnet"):
+            boundary = self._run_single_prism_streaming(
+                "knowledge_boundary", l12_output, file_name,
+                label=f"BOUNDARY ── {file_name}", general=True)
 
-        ka_model = self._get_prism_model(
-            "knowledge_audit") or "sonnet"
-        self.session.model = MODEL_MAP.get(ka_model, ka_model)
-        audit = self._run_single_prism_streaming(
-            "knowledge_audit", l12_output, file_name,
-            label=f"AUDIT ── {file_name}", general=True)
+        with self._temporary_model(
+                self._get_prism_model(
+                    "knowledge_audit") or "sonnet"):
+            audit = self._run_single_prism_streaming(
+                "knowledge_audit", l12_output, file_name,
+                label=f"AUDIT ── {file_name}", general=True)
 
         # Step 3: Extract gaps as structured list
         print(f"\n{C.BOLD}Step 3/4: Extracting knowledge gaps"
@@ -8422,9 +9006,9 @@ class PrismREPL:
             "Extract every knowledge gap as a JSON array. "
             "For each: claim, type, fill_source, query, "
             "risk, impact, confidence.")
-        self.session.model = MODEL_MAP.get("haiku", "haiku")
-        gap_json = self._claude.call(
-            gap_prompt, gap_input, model="haiku", timeout=60)
+        with self._temporary_model("haiku"):
+            gap_json = self._claude.call(
+                gap_prompt, gap_input, model="haiku", timeout=60)
 
         if gap_json:
             # Print JSON so -o tee captures gap data
@@ -8468,13 +9052,11 @@ class PrismREPL:
             f"{_facts_section}\n"
             "</verified_knowledge>\n\n"
             f"{content}")
-        self.session.model = MODEL_MAP.get(l12_model, l12_model)
-        verified_output = self._run_single_prism_streaming(
-            "l12", verified_context, file_name,
-            label=f"VERIFIED ── {file_name}",
-            general=general)
-
-        self.session.model = saved_model
+        with self._temporary_model(l12_model):
+            verified_output = self._run_single_prism_streaming(
+                "l12", verified_context, file_name,
+                label=f"VERIFIED ── {file_name}",
+                general=general)
 
         # Save all outputs
         combined = (
@@ -8565,190 +9147,186 @@ class PrismREPL:
 
         print(f"  {C.DIM}Goal: {goal}{C.RESET}")
 
-        saved_model = self.session.model
-        self.session.model = MODEL_MAP.get("sonnet", "sonnet")
-
-        # Call 1: Plan
-        print(f"\n{C.BOLD}Call 1/2: Strategy planning"
-              f"{C.RESET}")
-        strategist_prompt = self._load_prism("strategist")
-        if not strategist_prompt:
-            print(f"{C.RED}Strategist prism not found"
+        with self._temporary_model("sonnet"):
+            # Call 1: Plan
+            print(f"\n{C.BOLD}Call 1/2: Strategy planning"
                   f"{C.RESET}")
-            self.session.model = saved_model
+            strategist_prompt = self._load_prism("strategist")
+            if not strategist_prompt:
+                print(f"{C.RED}Strategist prism not found"
+                      f"{C.RESET}")
+                return
 
-        # Meta: strategist discovers its own tools from disk
-        # instead of relying only on its static list.
-        _discovered = self._discover_available_tools()
-        if _discovered:
-            strategist_prompt += (
-                "\n\nDISCOVERED TOOLS (auto-detected from "
-                "prisms/ directory — may include tools not "
-                "listed above):\n" + _discovered)
-            return
+            # Meta: strategist discovers its own tools from disk
+            # instead of relying only on its static list.
+            _discovered = self._discover_available_tools()
+            if _discovered:
+                strategist_prompt += (
+                    "\n\nDISCOVERED TOOLS (auto-detected from "
+                    "prisms/ directory — may include tools not "
+                    "listed above):\n" + _discovered)
+                return
 
-        # Build dynamic context so strategist knows the ACTUAL state
-        _dyn_ctx = ""
-        try:
-            import json as _json_strat
-            # Prior scans (from profile)
-            _prof_path = (self.working_dir / ".deep"
-                          / "profile.json")
-            if _prof_path.exists():
-                _prof = _json_strat.loads(
-                    _prof_path.read_text(encoding="utf-8"))
-                _sc = _prof.get("scan_count", 0)
-                _laws = _prof.get("conservation_laws", [])
-                _dyn_ctx += (
-                    f"\nPRIOR ANALYSIS STATE:\n"
-                    f"- {_sc} prior scans on this codebase\n"
-                    f"- Conservation laws found: "
-                    f"{_laws[:3] if _laws else 'none yet'}\n")
-            # False positives (from learning)
-            _learn_path = (self.working_dir / ".deep"
-                           / "learning.json")
-            if _learn_path.exists():
-                _learn = _json_strat.loads(
-                    _learn_path.read_text(encoding="utf-8"))
-                _fps = [e for e in _learn
-                        if e.get("type") in (
-                            "false_positive", "rejected_fix")]
-                if _fps:
+            # Build dynamic context so strategist knows the ACTUAL state
+            _dyn_ctx = ""
+            try:
+                import json as _json_strat
+                # Prior scans (from profile)
+                _prof_path = (self.working_dir / ".deep"
+                              / "profile.json")
+                if _prof_path.exists():
+                    _prof = _json_strat.loads(
+                        _prof_path.read_text(encoding="utf-8"))
+                    _sc = _prof.get("scan_count", 0)
+                    _laws = _prof.get("conservation_laws", [])
                     _dyn_ctx += (
-                        f"- Known false positives: "
-                        f"{[e.get('issue','') for e in _fps[-3:]]}\n")
-            # KB coverage
-            _kb_stem = self._discover_cache_key(file_name)
-            _kb_path = (self.working_dir / ".deep"
-                        / "knowledge" / f"{_kb_stem}.json")
-            if _kb_path.exists():
-                _kb = _json_strat.loads(
-                    _kb_path.read_text(encoding="utf-8"))
-                _dyn_ctx += (
-                    f"- Knowledge base: {len(_kb)} verified "
-                    f"facts for this file\n")
-        except Exception:
-            pass
+                        f"\nPRIOR ANALYSIS STATE:\n"
+                        f"- {_sc} prior scans on this codebase\n"
+                        f"- Conservation laws found: "
+                        f"{_laws[:3] if _laws else 'none yet'}\n")
+                # False positives (from learning)
+                _learn_path = (self.working_dir / ".deep"
+                               / "learning.json")
+                if _learn_path.exists():
+                    _learn = _json_strat.loads(
+                        _learn_path.read_text(encoding="utf-8"))
+                    _fps = [e for e in _learn
+                            if e.get("type") in (
+                                "false_positive", "rejected_fix")]
+                    if _fps:
+                        _dyn_ctx += (
+                            f"- Known false positives: "
+                            f"{[e.get('issue','') for e in _fps[-3:]]}\n")
+                # KB coverage
+                _kb_stem = self._discover_cache_key(file_name)
+                _kb_path = (self.working_dir / ".deep"
+                            / "knowledge" / f"{_kb_stem}.json")
+                if _kb_path.exists():
+                    _kb = _json_strat.loads(
+                        _kb_path.read_text(encoding="utf-8"))
+                    _dyn_ctx += (
+                        f"- Knowledge base: {len(_kb)} verified "
+                        f"facts for this file\n")
+            except Exception:
+                pass
 
-        plan_input = (
-            f"GOAL: {goal}\n\n"
-            f"TARGET: {file_name} "
-            f"({'non-code text' if general else 'source code'})"
-            f"{_dyn_ctx}"
-            f"\n\nTARGET PREVIEW (first 2000 chars):\n"
-            f"{content[:2000]}")
+            plan_input = (
+                f"GOAL: {goal}\n\n"
+                f"TARGET: {file_name} "
+                f"({'non-code text' if general else 'source code'})"
+                f"{_dyn_ctx}"
+                f"\n\nTARGET PREVIEW (first 2000 chars):\n"
+                f"{content[:2000]}")
 
-        plan = self._claude.call(
-            strategist_prompt, plan_input,
-            model="sonnet", timeout=120)
+            plan = self._claude.call(
+                strategist_prompt, plan_input,
+                model="sonnet", timeout=120)
 
-        if not plan:
-            print(f"{C.RED}Strategy planning failed"
+            if not plan:
+                print(f"{C.RED}Strategy planning failed"
+                      f"{C.RESET}")
+                return
+
+            print(plan, flush=True)
+
+            # Call 2: Adversarial critique (P221)
+            print(f"\n{C.BOLD}Call 2/2: Adversarial critique"
                   f"{C.RESET}")
-            self.session.model = saved_model
-            return
+            critique_prompt = (
+                "You are an adversarial reviewer of analytical "
+                "strategies. Attack the strategy below:\n"
+                "1. What steps are wasteful or redundant?\n"
+                "2. What is MISSING (synthesis, verification, "
+                "fallbacks)?\n"
+                "3. What order is wrong? (composition is "
+                "non-commutative — L12 must come before audit)\n"
+                "4. Are there cheaper alternatives that "
+                "achieve the same goal?\n"
+                "5. What CONDITIONS should gate each step?\n\n"
+                "Then output a REVISED STRATEGY with:\n"
+                "- Conditional steps (IF/THEN)\n"
+                "- Fallbacks for each step\n"
+                "- Synthesis step at the end\n"
+                "- Budget estimate\n"
+                "For each step, output COMMAND: the exact "
+                "prism.py command to run.")
+            critique = self._claude.call(
+                critique_prompt,
+                f"GOAL: {goal}\n\nSTRATEGY:\n{plan}",
+                model="sonnet", timeout=120)
 
-        print(plan, flush=True)
+            if critique:
+                print(critique, flush=True)
+                # Use the revised plan for execution
+                plan = critique
 
-        # Call 2: Adversarial critique (P221)
-        print(f"\n{C.BOLD}Call 2/2: Adversarial critique"
-              f"{C.RESET}")
-        critique_prompt = (
-            "You are an adversarial reviewer of analytical "
-            "strategies. Attack the strategy below:\n"
-            "1. What steps are wasteful or redundant?\n"
-            "2. What is MISSING (synthesis, verification, "
-            "fallbacks)?\n"
-            "3. What order is wrong? (composition is "
-            "non-commutative — L12 must come before audit)\n"
-            "4. Are there cheaper alternatives that "
-            "achieve the same goal?\n"
-            "5. What CONDITIONS should gate each step?\n\n"
-            "Then output a REVISED STRATEGY with:\n"
-            "- Conditional steps (IF/THEN)\n"
-            "- Fallbacks for each step\n"
-            "- Synthesis step at the end\n"
-            "- Budget estimate\n"
-            "For each step, output COMMAND: the exact "
-            "prism.py command to run.")
-        critique = self._claude.call(
-            critique_prompt,
-            f"GOAL: {goal}\n\nSTRATEGY:\n{plan}",
-            model="sonnet", timeout=120)
+            combined = (
+                f"## INITIAL STRATEGY\n\n{plan}\n\n---\n\n"
+                f"## ADVERSARIAL CRITIQUE + REVISED PLAN"
+                f"\n\n{critique or '(no critique)'}")
+            self._save_deep_finding(
+                file_name, "strategist", combined)
 
-        if critique:
-            print(critique, flush=True)
-            # Use the revised plan for execution
-            plan = critique
+            # Phase 2: Extract and execute commands from the plan
+            # Look for COMMAND: lines in the plan
+            import re as _re_strat
+            commands = _re_strat.findall(
+                r'COMMAND:\s*(.+?)(?:\n|$)', plan)
 
-        combined = (
-            f"## INITIAL STRATEGY\n\n{plan}\n\n---\n\n"
-            f"## ADVERSARIAL CRITIQUE + REVISED PLAN"
-            f"\n\n{critique or '(no critique)'}")
-        self._save_deep_finding(
-            file_name, "strategist", combined)
+            if commands and not self._interrupted:
+                print(f"\n{C.BOLD}{C.CYAN}"
+                      f"Strategy has {len(commands)} steps. "
+                      f"Execute?{C.RESET}")
+                if hasattr(self, '_quiet') and self._quiet:
+                    execute = True
+                else:
+                    try:
+                        answer = input(
+                            f"  [y]es / [n]o / [s]tep-by-step: "
+                        ).strip().lower()
+                        execute = answer in ('y', 'yes')
+                        step_by_step = answer in ('s', 'step')
+                    except (EOFError, KeyboardInterrupt):
+                        execute = False
+                        step_by_step = False
 
-        # Phase 2: Extract and execute commands from the plan
-        # Look for COMMAND: lines in the plan
-        import re as _re_strat
-        commands = _re_strat.findall(
-            r'COMMAND:\s*(.+?)(?:\n|$)', plan)
-
-        if commands and not self._interrupted:
-            print(f"\n{C.BOLD}{C.CYAN}"
-                  f"Strategy has {len(commands)} steps. "
-                  f"Execute?{C.RESET}")
-            if hasattr(self, '_quiet') and self._quiet:
-                execute = True
-            else:
-                try:
-                    answer = input(
-                        f"  [y]es / [n]o / [s]tep-by-step: "
-                    ).strip().lower()
-                    execute = answer in ('y', 'yes')
-                    step_by_step = answer in ('s', 'step')
-                except (EOFError, KeyboardInterrupt):
-                    execute = False
-                    step_by_step = False
-
-            if execute or step_by_step:
-                for i, cmd in enumerate(commands, 1):
-                    if self._interrupted:
-                        break
-                    cmd = cmd.strip().strip('`')
-                    print(f"\n{C.BOLD}Step {i}/"
-                          f"{len(commands)}: {cmd}{C.RESET}")
-
-                    # Parse the command and dispatch
-                    # Strip the "python3 prism.py --scan" prefix
-                    scan_match = _re_strat.search(
-                        r'(?:--scan\s+)?(\S+)\s+(single|full|'
-                        r'3way|behavioral|meta|verified|l12g|'
-                        r'gaps|oracle|scout|evolve)',
-                        cmd)
-                    if scan_match:
-                        _target = scan_match.group(1)
-                        _mode = scan_match.group(2)
-                        print(f"  {C.DIM}Executing: "
-                              f"/scan {_target} {_mode}"
-                              f"{C.RESET}")
-                        self._cmd_scan(
-                            f"{file_name} {_mode}")
-                    else:
-                        print(f"  {C.DIM}Cannot auto-execute:"
-                              f" {cmd}{C.RESET}")
-
-                    if step_by_step and i < len(commands):
-                        try:
-                            cont = input(
-                                "  Continue? [y/n]: "
-                            ).strip().lower()
-                            if cont not in ('y', 'yes'):
-                                break
-                        except (EOFError, KeyboardInterrupt):
+                if execute or step_by_step:
+                    for i, cmd in enumerate(commands, 1):
+                        if self._interrupted:
                             break
+                        cmd = cmd.strip().strip('`')
+                        print(f"\n{C.BOLD}Step {i}/"
+                              f"{len(commands)}: {cmd}{C.RESET}")
 
-        self.session.model = saved_model
+                        # Parse the command and dispatch
+                        # Strip the "python3 prism.py --scan" prefix
+                        scan_match = _re_strat.search(
+                            r'(?:--scan\s+)?(\S+)\s+(single|full|'
+                            r'3way|behavioral|meta|verified|l12g|'
+                            r'gaps|oracle|scout|evolve)',
+                            cmd)
+                        if scan_match:
+                            _target = scan_match.group(1)
+                            _mode = scan_match.group(2)
+                            print(f"  {C.DIM}Executing: "
+                                  f"/scan {_target} {_mode}"
+                                  f"{C.RESET}")
+                            self._cmd_scan(
+                                f"{file_name} {_mode}")
+                        else:
+                            print(f"  {C.DIM}Cannot auto-execute:"
+                                  f" {cmd}{C.RESET}")
+
+                        if step_by_step and i < len(commands):
+                            try:
+                                cont = input(
+                                    "  Continue? [y/n]: "
+                                ).strip().lower()
+                                if cont not in ('y', 'yes'):
+                                    break
+                            except (EOFError, KeyboardInterrupt):
+                                break
+
         print(f"\n{C.GREEN}Strategist complete{C.RESET}")
 
         self._session_log.append(
@@ -8769,8 +9347,6 @@ class PrismREPL:
         print(f"  {C.DIM}2-call: Oracle scout (depth+type) → "
               f"targeted verify (KNOWLEDGE/ASSUMED only)"
               f"{C.RESET}")
-
-        saved_model = self.session.model
 
         # Call 1: Oracle Phases 1-2 (structural depth + epistemic typing)
         scout_prompt = (
@@ -8793,18 +9369,16 @@ class PrismREPL:
         print(f"\n{C.BOLD}Call 1/2: Scout (depth + typing)"
               f"{C.RESET}")
         _scout_model = self._get_prism_model("l12") or "sonnet"
-        self.session.model = MODEL_MAP.get(
-            _scout_model, _scout_model)
-        scout_output = self._claude.call(
-            scout_prompt, content[:30000],
-            model=_scout_model, timeout=300)
+        with self._temporary_model(_scout_model):
+            scout_output = self._claude.call(
+                scout_prompt, content[:30000],
+                model=_scout_model, timeout=300)
         # Print so -o tee captures non-streaming output
         if scout_output:
             print(scout_output, flush=True)
 
         if not scout_output or not scout_output.strip():
             print(f"{C.RED}Scout returned empty{C.RESET}")
-            self.session.model = saved_model
             return
 
         # Call 2: Verify only KNOWLEDGE/ASSUMED claims
@@ -8823,15 +9397,13 @@ class PrismREPL:
             "unchanged.")
         print(f"\n{C.BOLD}Call 2/2: Targeted verification"
               f"{C.RESET}")
-        self.session.model = MODEL_MAP.get("haiku", "haiku")
-        verified = self._claude.call(
-            verify_prompt, scout_output[:10000],
-            model="haiku", timeout=120)
+        with self._temporary_model("haiku"):
+            verified = self._claude.call(
+                verify_prompt, scout_output[:10000],
+                model="haiku", timeout=120)
         # Print so -o tee captures
         if verified:
             print(verified, flush=True)
-
-        self.session.model = saved_model
 
         # Combine and save
         combined = (
@@ -8874,7 +9446,10 @@ class PrismREPL:
             if '-' in part:
                 try:
                     start, end = part.split('-', 1)
-                    for i in range(int(start), int(end) + 1):
+                    s, e = int(start), int(end)
+                    if s > e:
+                        s, e = e, s  # Auto-reverse "5-3" → "3-5"
+                    for i in range(s, e + 1):
                         if 1 <= i <= max_val:
                             indices.add(i)
                 except ValueError:
@@ -9122,7 +9697,7 @@ class PrismREPL:
         print(f"\n  {C.CYAN}Extracting domains from "
               f"brainstorming ({len(outputs)} passes)...{C.RESET}")
 
-        extract_prompt = COOK_EXTRACT_DOMAINS_PROMPT
+        extract_prompt = _get_domain_prompt("brainstorming")
         extract_input = (
             f"Extract EVERY domain mentioned in the brainstorming below. "
             f"Preserve the full diversity — technical, business, psychological, "
@@ -9215,12 +9790,11 @@ class PrismREPL:
         p = pathlib.Path(file_name)
         parent = p.parent.name
         grandparent = p.parent.parent.name if p.parent.parent else ""
-        stem = p.stem
-        if grandparent and grandparent != ".":
-            return f"{grandparent}_{parent}_{stem}" if parent and parent != "." else f"{grandparent}_{stem}"
-        if parent and parent != ".":
-            return f"{parent}_{stem}"
-        return stem
+        stem = p.stem or "unnamed"
+        # Filter empty/dot parts to avoid malformed keys like "__stem"
+        parts = [x for x in (grandparent, parent, stem)
+                 if x and x != "."]
+        return "_".join(parts) if parts else "unnamed"
 
     def _save_discover_results(self, results, file_name=None):
         """Persist discover results to .deep/discover_{key}.json."""
@@ -9302,6 +9876,8 @@ class PrismREPL:
             goal = results[goal - 1]["name"]
 
         slug = re.sub(r'[^a-z0-9]+', '_', goal.lower()).strip('_')[:80]
+        if not slug:
+            slug = "unnamed"
         deep_dir = (self.working_dir / ".deep" / "prisms"
                     / "_deep" / slug)
 
@@ -9943,6 +10519,8 @@ class PrismREPL:
         """
         # Slugify goal for filesystem
         slug = re.sub(r'[^a-z0-9]+', '_', goal.lower()).strip('_')[:slug_max]
+        if not slug:
+            slug = "unnamed"
 
         # Check cache
         cached_prism = f"{cache_prefix}/{slug}"
@@ -9963,6 +10541,7 @@ class PrismREPL:
             _cooker_map = {
                 "simulation": COOK_SIMULATION,
                 "archaeology": COOK_ARCHAEOLOGY,
+                "concealment": COOK_CONCEALMENT,
                 "universal": COOK_UNIVERSAL,
             }
             _cook_template = _cooker_map.get(cooker, COOK_UNIVERSAL)
@@ -10000,13 +10579,11 @@ class PrismREPL:
 
         # Run the prism — use COOK_MODEL for solve too (P204: same-model
         # cook+solve produces 2x depth vs cross-model)
-        _prev_target = self.session.model
-        self.session.model = MODEL_MAP.get(COOK_MODEL, COOK_MODEL)
-        self._run_single_prism_streaming(
-            cached_prism, content, file_name,
-            label=f"{slug} ── {file_name}",
-            intent=goal)
-        self.session.model = _prev_target
+        with self._temporary_model(COOK_MODEL):
+            self._run_single_prism_streaming(
+                cached_prism, content, file_name,
+                label=f"{slug} ── {file_name}",
+                intent=goal)
 
     # Extensions that are always code (no content sniffing needed)
     _CODE_EXTS = {
@@ -10226,11 +10803,76 @@ class PrismREPL:
         except (OSError, ValueError):
             return None
 
+    def _execute_prism(self, system_prompt, message, *,
+                       model=None, tools=False, label=None,
+                       file_name=None, prism_name=None,
+                       save=True, intent=None, mode="single"):
+        """Execute a prism via ClaudeBackend streaming.
+
+        Single point of backend creation for all prism execution.
+        Handles model override, streaming, saving, and session logging.
+
+        Args:
+            system_prompt: The prism prompt text.
+            message: User message/content to analyze.
+            model: Model name override (resolves via _temporary_model). None = session model.
+            tools: Whether to enable tools (default False for analysis).
+            label: Header label for streaming output.
+            file_name: For saving findings. None = don't save.
+            prism_name: Prism identifier for findings filename.
+            save: Whether to save to .deep/findings/.
+            intent: Intent string for session log.
+            mode: Mode string for session log (default 'single').
+
+        Returns:
+            Captured output text, or "" if interrupted/failed.
+        """
+        if label:
+            print(f"{C.BOLD}{C.BLUE}── {label} ──{C.RESET}")
+
+        with self._temporary_model(model):
+            backend = ClaudeBackend(
+                model=self.session.model,
+                working_dir=str(self.working_dir),
+                system_prompt=system_prompt,
+                tools=tools,
+            )
+            cost_before = self.session.total_cost_usd
+            captured = self._stream_and_capture(backend, message)
+            cost_delta = self.session.total_cost_usd - cost_before
+
+        if (save and captured.strip() and not self._interrupted
+                and file_name and prism_name):
+            self._save_deep_finding(file_name, prism_name, captured)
+            self._session_log.append(
+                operation="analyze",
+                intent=intent,
+                file_name=file_name,
+                lens=prism_name,
+                model=model or self.session.model,
+                mode=mode,
+                findings_summary=captured[:200] if captured else None,
+                cost_estimate=round(cost_delta, 6) if cost_delta > 0 else None,
+            )
+            # A5: Track prism yield for adaptive routing
+            if hasattr(self, '_yield_tracker') and prism_name:
+                _out_len = len(captured.strip())
+                if _out_len > 200:
+                    self._yield_tracker.record(prism_name, "actionable")
+                elif _out_len > 50:
+                    self._yield_tracker.record(prism_name, "insightful")
+                else:
+                    self._yield_tracker.record(prism_name, "noise")
+
+        return captured
+
     def _run_single_prism_streaming(self, prism_name, content, file_name,
                                     label=None, message=None, general=False,
                                     intent=None):
         """Run a single prism with streaming output. Saves to .deep/findings/.
 
+        Thin wrapper: loads prism, strips L12 bug harvest for general text,
+        builds message, delegates to _execute_prism.
         Returns captured output text, or "" if interrupted/failed.
         """
         prompt = self._load_prism(prism_name)
@@ -10246,38 +10888,21 @@ class PrismREPL:
                 prompt = prompt[:idx].rstrip()
 
         header = label or f"{prism_name} ── {file_name}"
-        print(f"{C.BOLD}{C.BLUE}── {header} ──{C.RESET}")
 
-        backend = ClaudeBackend(
-            model=self.session.model,
-            working_dir=str(self.working_dir),
-            system_prompt=prompt,
-            tools=False,
-        )
         if message:
             msg = message
         else:
             content_label = "input" if general else "source code"
             msg = f"Analyze this {content_label}.\n\n{content}"
-        cost_before = self.session.total_cost_usd
-        captured = self._stream_and_capture(backend, msg)
-        cost_delta = self.session.total_cost_usd - cost_before
 
-        if captured.strip() and not self._interrupted:
-            self._save_deep_finding(file_name, prism_name, captured)
-            # TRACK: log the operation
-            summary = captured[:200] if captured else None
-            self._session_log.append(
-                operation="analyze",
-                intent=intent,
-                file_name=file_name,
-                lens=prism_name,
-                model=self.session.model,
-                mode="single",
-                findings_summary=summary,
-                cost_estimate=round(cost_delta, 6) if cost_delta > 0 else None,
-            )
-        return captured
+        return self._execute_prism(
+            system_prompt=prompt,
+            message=msg,
+            label=header,
+            file_name=file_name,
+            prism_name=prism_name,
+            intent=intent,
+        )
 
     # ── Auto-modes ───────────────────────────────────────────────────────
 
@@ -10976,7 +11601,8 @@ class PrismREPL:
             null validation' share tokens {null, parse_line} → match.
             """
             if not s1 or not s2:
-                return 1.0 if s1 == s2 else 0.0
+                # Both empty = unknown (not identical). Prevents false dedup.
+                return 0.0
             s1, s2 = _normalize(s1), _normalize(s2)
             if s1 == s2:
                 return 1.0
@@ -11164,10 +11790,20 @@ class PrismREPL:
         unique = [t for t in search_terms
                   if t not in seen and not seen.add(t)]
 
-        # Search from end backwards to favor the last definition
-        # (common pattern: tests mock/override prod implementations)
+        # Search forwards first for definitions (production code),
+        # backwards only as fallback (catches mocks/overrides).
         for term in unique[:8]:
-            for i in range(len(lines) - 1, -1, -1):  # Search backwards
+            # Forward pass: prefer first definition
+            if term.startswith("def "):
+                for i in range(len(lines)):
+                    if term in lines[i]:
+                        start = max(0, i - 5)
+                        end = min(len(lines), i + context_lines)
+                        numbered = [f"{n+1:>4}  {lines[n]}"
+                                   for n in range(start, end)]
+                        return "\n".join(numbered)
+            # Non-definition terms: search backwards (last usage)
+            for i in range(len(lines) - 1, -1, -1):
                 if term in lines[i]:
                     start = max(0, i - 5)
                     end = min(len(lines), i + context_lines)
@@ -11878,8 +12514,8 @@ class PrismREPL:
                 error_msg = "JSON comments detected (// or /* */)"
 
             # Fallback: find JSON array or object anywhere.
-            # Try greedy first (whole block), then non-greedy (first match)
-            # in case greedy grabbed cross-object garbage.
+            # Greedy arrays first (captures nested brackets correctly).
+            # Then greedy objects, then non-greedy fallbacks.
             parsed = None
             for pattern in (r'\[.*\]', r'\{.*\}',
                             r'\[.*?\]', r'\{.*?\}'):
@@ -12233,7 +12869,7 @@ def main():
                          "(same concept as target= in /scan)")
     ap.add_argument("--cooker", default=None, metavar="NAME",
                     help="override cooker template (e.g. simulation, "
-                         "archaeology). Used with target= or 3way.")
+                         "archaeology, concealment). Used with target= or 3way.")
     ap.add_argument("--validate", action="store_true",
                     help="post-hoc quality check: score output depth "
                          "and actionability (EVALUATE primitive)")
@@ -12246,6 +12882,8 @@ def main():
     ap.add_argument("--effort", default=None,
                     choices=["low", "medium", "high", "max"],
                     help="reasoning effort level (passed to claude CLI)")
+    ap.add_argument("--budget", default=None, type=float, metavar="USD",
+                    help="max cost budget for adaptive mode (e.g. --budget 0.10)")
     ap.add_argument("--append-system", action="store_true",
                     dest="append_system",
                     help="append system prompt to built-in (vs replace)")
@@ -13724,6 +14362,9 @@ def main():
         # Wire --intent into target= syntax so it works with --scan
         if getattr(args, 'intent', None) and 'target=' not in scan_arg:
             scan_arg += f' target="{args.intent}"'
+        # Wire --budget into budget= syntax for adaptive mode
+        if getattr(args, 'budget', None) and 'budget=' not in scan_arg:
+            scan_arg += f' budget={args.budget}'
         # Wire --cooker into cooker= syntax
         if getattr(args, 'cooker', None) and 'cooker=' not in scan_arg:
             scan_arg += f' cooker="{args.cooker}"'

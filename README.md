@@ -4,7 +4,7 @@
 
 Your most expensive model produces shallow analysis because you're asking it to reason *about* problems instead of *through* them. A 332-word prompt fixes this.
 
-A **prism** is a markdown file used as a system prompt. Instead of asking the model to "analyze deeply," it tells the model to do specific things: make a claim, attack it, build an improvement, watch what breaks, derive what can't change. This repo contains 50 prisms + 20 scan modes + the tooling to use them. The newest prisms detect their own knowledge gaps and self-correct confabulated claims.
+A **prism** is a markdown file used as a system prompt. Instead of asking the model to "analyze deeply," it tells the model to do specific things: make a claim, attack it, build an improvement, watch what breaks, derive what can't change. This repo contains 57 prisms + 26 scan modes + the tooling to use them. The newest prisms detect their own knowledge gaps and self-correct confabulated claims.
 
 **Same code. Same question. Different instructions:**
 
@@ -526,7 +526,7 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 ```
 prism.py              Interactive REPL + CLI tool (~14,000 lines)
-prisms/               50 prisms: 11 champions + gap detection + oracle + strategist + prereq + verify_claims + variants
+prisms/               57 prisms: 11 champions + gap detection + oracle + strategist + prereq + verify_claims + 7 new epistemic (history, genesis, emergence, counterfactual, blindspot, architect, significance)
 prompts/              80+ research prisms (L4-L13) + paper prompts + gap extraction
 research/             Experiment scripts, benchmarks, 30 literature reviews
 output/               1,000+ raw experiment outputs

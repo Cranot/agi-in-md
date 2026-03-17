@@ -1,12 +1,12 @@
 
-⚙️  /prism-discover analyze /home/user/circuit_breaker.py
+⚙️  /prism-discover analyze ./circuit_breaker.py
 ● [SYSTEM: The user has invoked the "prism-discover" skill, indicating they want you to follow its instructions. The full skill content is loaded below.] (+27 lines)
 
 ⚡ Loading skill: prism-discover
 
 ────────────────────────────────────────
 
-  ┊ 📖 read      /home/user/circuit_breaker.py  0.9s
+  ┊ 📖 read      ./circuit_breaker.py  0.9s
  ─  ⚕ Hermes  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
    Now I'll discover all the distinct analysis domains for this circuit breaker implementation.
@@ -50,7 +50,7 @@
 
  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-⚙️  /prism-scan analyze /home/user/circuit_breaker.py
+⚙️  /prism-scan analyze ./circuit_breaker.py
 ● [SYSTEM: The user has invoked the "prism-scan" skill, indicating they want you to follow its instructions. The full skill content is loaded below.] (+60 lines)
 
 ⚡ Loading skill: prism-scan
@@ -169,14 +169,14 @@
 
  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-⚙️  /prism-reflect analyze /home/user/circuit_breaker.py
+⚙️  /prism-reflect analyze ./circuit_breaker.py
 ● [SYSTEM: The user has invoked the "prism-reflect" skill, indicating they want you to follow its instructions. The full skill content is loaded below.] (+81 lines)
 
 ⚡ Loading skill: prism-reflect
 
 ────────────────────────────────────────
 
-  ┊ 📖 read      /home/user/circuit_breaker.py  0.9s
+  ┊ 📖 read      ./circuit_breaker.py  0.9s
   ┊ 💬 ---
 
 ## PHASE 1: Structural Analysis
@@ -315,7 +315,7 @@ of its claimed conservation laws. To validate universality, compare across desig
 ---
 
 ## PHASE 4: Growth — Persisting Constraint History
-  ┊ ✍️  write     /home/user/.prism-history.md  0.7s
+  ┊ ✍️  write     ./.prism-history.md  0.7s
  ─  ⚕ Hermes  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
    Done. Constraint history persisted.
@@ -337,14 +337,14 @@ of its claimed conservation laws. To validate universality, compare across desig
 
  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-⚙️  /prism-scan analyze /home/user/circuit_breaker.py
+⚙️  /prism-scan analyze ./circuit_breaker.py
 ● [SYSTEM: The user has invoked the "prism-scan" skill, indicating they want you to follow its instructions. The full skill content is loaded below.] (+60 lines)
 
 ⚡ Loading skill: prism-scan
 
 ────────────────────────────────────────
 
-  ┊ 📖 read      /home/user/.prism-history.md  0.9s
+  ┊ 📖 read      ./.prism-history.md  0.9s
  ─  ⚕ Hermes  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
    ---
@@ -507,14 +507,14 @@ of its claimed conservation laws. To validate universality, compare across desig
 
  ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-⚙️  /prism-3way analyze /home/user/circuit_breaker.py
+⚙️  /prism-3way analyze ./circuit_breaker.py
 ● [SYSTEM: The user has invoked the "prism-3way" skill, indicating they want you to follow its instructions. The full skill content is loaded below.] (+48 lines)
 
 ⚡ Loading skill: prism-3way
 
 ────────────────────────────────────────
 
-  ┊ 📖 read      /home/user/circuit_breaker.py  0.9s
+  ┊ 📖 read      ./circuit_breaker.py  0.9s
  ─  ⚕ Hermes  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
    ---

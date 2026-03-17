@@ -130,7 +130,7 @@ For each (target, prompt) pair:
 
 ```bash
 #!/bin/bash
-# Run on VPS: ssh user@<VPS>
+# Run on VPS: ssh user@<VPS_IP>
 
 TARGETS=("research/real_code_starlette.py" "research/real_code_click.py" ...)
 PROMPTS=("scrambled_order.md" "scrambled_keywords.md" "random_ops.md" ...)
