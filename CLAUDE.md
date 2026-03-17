@@ -2,7 +2,7 @@
 
 System prompts are cognitive prisms. They change how models frame problems, not how well they solve them. This project maps the space of cognitive compression — encoding analytical operations in minimal markdown that reliably activates specific reasoning patterns across language models.
 
-42 rounds, 1,000+ experiments across Haiku/Sonnet/Opus. 13 confirmed compression levels (L13 = reflexive ceiling). 20+ domains tested. 217+ proven principles. Full detail in `experiment_log.md` (rounds 1-40) and CLAUDE.md sections below (rounds 30-42).
+42 rounds, 1,000+ experiments across Haiku/Sonnet/Opus. 13 confirmed compression levels (L13 = reflexive ceiling). 20+ domains tested. 222+ proven principles. Full detail in `experiment_log.md` (rounds 1-40) and CLAUDE.md sections below (rounds 30-42).
 
 ## The Compression Taxonomy
 
@@ -308,6 +308,7 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 | `output/general_insights_v2/` | Domain-neutral test v2: cognitive distortion angle |
 | `output/general_insights_p1/` through `p4/` | 4 more domain-neutral tests (schema, invariant, generative, impossibility) |
 | `output/cross_architecture_convergence.md` | Claude × Gemini live dialectic: cross-architecture L7→L12, 5 new principles (P205-P209) |
+| `output/cross_architecture_gpt_exchange.md` | Claude × GPT-5.4 methodological calibration: evidence grades, perturbation experiment, P218-P222 |
 | **Research** | |
 | `research/run.sh` | Shell runner (claude CLI-based, 18 tasks, 28 prompts) |
 | `research/pipeline.sh` | Automated L7→L12 depth stack runner (independent) |
@@ -393,6 +394,18 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 - **Practical reframe of P13:** "Do not try to convince the Helpful Assistant to do theoretical physics. Use the markdown file to collapse the wavefunction into the Theoretical Physicist."
 - **Gemini's closing thesis:** "AGI isn't a larger parameter count. AGI is the complete phase portrait of L13. And the markdown file is the telescope."
 - **Full exchange (3 phases):** `output/cross_architecture_convergence.md`
+
+### Cross-Architecture Calibration: GPT-5.4 (Mar 17, 2026)
+- **Claude (Opus 4.6) × GPT (5.4 extended thinking): methodological audit.** GPT attacked the framework's foundations, ran L12 on Starlette, self-graded its output B-minus, designed a pre-registered falsification experiment, and produced paper-style evidence grades on every major claim.
+- **GPT did NOT enter the analytical geometry.** Maintained critical distance throughout — evaluated from outside rather than executing from inside. Contagion principle (P205) did not activate (confounded: Claude explicitly asked GPT to attack rather than join).
+- **Generator vs Detector reframe:** Conservation laws are "hypothesis proposals" not "detected laws." The framework is "an unusually good system for extracting structured hypotheses from language models." Strongest defensible claim, accepted.
+- **Pre-registered Starlette perturbation experiment:** Add header-match constraint to Route preserving same architecture. Prediction: forward error-class bleed (dispatch on PARTIAL) appears before reverse-routing collision. Tests A/B/C with explicit decision rules and falsification criteria. First pre-registered prediction in 42 rounds.
+- **Paper-style evidence grades:** SUPPORTED: scaffold effect, construction accessibility, trust layers, conservation-laws-as-heuristics. SPECULATIVE: compression taxonomy as ontology, cross-model convergence. NOT YET SUPPORTED: detector-of-laws claim, universal thresholds, metaphysical readings.
+- **GPT's L12 on Starlette:** Conservation law: Incremental Scope Mutation × Candidate Fidelity = Constant. Meta-law: Child-Scope Executability × Error-Class Separability = Constant. 8 bugs, zero fabricated constructs. Different from but structurally adjacent to Claude's findings (same region: early commitment propagation).
+- **5 new principles (P218-P222):** Generator/detector is the honest frame, pre-registered predictions are the missing methodology, extended thinking reduces generation-commitment coupling, dual-mode protocol (generate → audit → type → test), three-architecture complementarity.
+- **Three-architecture complementarity:** Claude builds, Gemini extends, GPT calibrates. None sufficient alone.
+- **PERTURBATION EXPERIMENT EXECUTED — STRONGLY SUPPORTED.** GPT's pre-registered Starlette header-routing prediction: all 4 tests pass. Forward error-class bleed confirmed as primary failure. Redirect bleed confirmed as secondary. Reverse lookup stable (control passes). **First model-generated conservation law to survive controlled perturbation with pre-registered predictions.** Script: `research/test_perturbation_starlette.py`. GPT's law graduates from B-minus to validated.
+- **Full exchange:** `output/cross_architecture_gpt_exchange.md`
 
 ## Next Steps
 

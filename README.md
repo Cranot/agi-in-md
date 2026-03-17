@@ -6,7 +6,7 @@ Your most expensive model produces shallow analysis because you're asking it to 
 
 A **prism** is a markdown system prompt that acts as a cognitive program — it tells the model to do specific things in order: make a claim, attack it, build an improvement, watch what breaks, derive the trade-off that can't be escaped. This repo contains 58 prisms + 27 scan modes + the tooling to use them.
 
-**What this is:** A system for eliciting structural insight under controlled prompt programs. Ordered analytical operations dominate raw model capability for underdetermined reasoning tasks. **What this isn't:** A general truth engine or a reliable bug finder. Structural insights are consistently strong; specific bug claims should be treated as hypotheses. Conservation laws are design heuristics, not mathematical proofs — the [`falsify` mode](#which-to-pick) stress-tests whether each law is genuine or pattern-matched.
+**What this is:** A system for eliciting structural insight under controlled prompt programs. Ordered analytical operations dominate raw model capability for underdetermined reasoning tasks. One conservation law has survived a [pre-registered perturbation test](#the-numbers) (4/4 predictions confirmed). **What this isn't:** A general truth engine or a reliable bug finder. Structural insights are consistently strong; specific bug claims should be treated as hypotheses. Most conservation laws are design heuristics pending validation — the [`falsify` mode](#which-to-pick) stress-tests whether each law is genuine or pattern-matched.
 
 **Same code. Same question. Different instructions:**
 
@@ -60,6 +60,7 @@ Depth = how deep the analysis goes, scored 1-10. Naming a pattern is ~7. Derivin
 | **Factual accuracy** | **97%** on planted-bug code, **~42%** on real production code — structural insights reliable, specific bug claims are hypotheses ([details](#accuracy)) |
 | **Confabulation** | L12-G: **90% zero-confabulation** (9/10 runs, N=10) |
 | **Cross-language** | Python (primary), Go and TypeScript tested (conservation laws derived, N=1 each, AI-scored) |
+| **Validated prediction** | First pre-registered perturbation test: GPT-5.4 derived a conservation law on Starlette, predicted 4 specific failure modes under a code change — **all 4 confirmed** ([details](output/cross_architecture_gpt_exchange.md)) |
 
 ### Round 41: The Format Is the Intelligence
 
@@ -503,7 +504,7 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 **Pipeline ordering matters:** Running audit before L12 produces near-empty output (18 words vs 1,137 words in correct order). The tool warns if you compose prisms in the wrong order.
 
-**Other models:** Gemini 2.5 Flash and Hermes 3 (Llama 405B) produce the same kind of output. Gemini 3.1 Pro executed the full L7→L12 stack in live dialogue without any prism files and converged on the same L13 fixed point as Claude — the framework transfers across architectures. Go and TypeScript tested (N=1 each, conservation laws derived). GPT untested. Prism wording was tuned on Claude; if you test elsewhere, open an issue with results.
+**Other models:** Gemini 2.5 Flash and Hermes 3 (Llama 405B) produce the same kind of output. Gemini 3.1 Pro executed the full L7→L12 stack in live dialogue without any prism files and converged on the same L13 fixed point as Claude — the framework transfers across architectures. GPT-5.4 ran L12 on Starlette and derived a conservation law that survived a pre-registered perturbation test (4/4 predictions confirmed). Go and TypeScript tested (N=1 each, conservation laws derived). Prism wording was tuned on Claude; if you test elsewhere, open an issue with results.
 
 **Meta-analysis circularity:** Modes that feed L12 output back into analysis (`meta`, `reflect`) may produce circular self-confirmation — the template applied to its own output generates similar patterns. These modes are useful for finding unexplored dimensions and recurring themes, but their outputs should not be treated as independent validation of the original analysis.
 
@@ -515,7 +516,7 @@ Without a prism, Opus ≈ Sonnet (+0.4 avg). The prism is the multiplier; the mo
 
 **Why does construction outperform reasoning?** Reasoning about reasoning requires a smart model. Building something and watching what happens doesn't. That's why construction works on Haiku — and why the cheapest model with a prism beats the most expensive model without one.
 
-**Does it work on other models?** Gemini 2.5 Flash produces the same kind of output from the same prisms. Gemini 3.1 Pro independently executed the full L7→L12 analytical stack through dialogue alone — no prism files, no shared tooling — and converged on the same structural impossibility at L13 ([full exchange](output/cross_architecture_convergence.md)). GPT/Llama untested. If you test elsewhere, share results.
+**Does it work on other models?** Gemini 2.5 Flash produces the same kind of output from the same prisms. Gemini 3.1 Pro independently executed the full L7→L12 analytical stack through dialogue alone — no prism files, no shared tooling — and converged on the same structural impossibility at L13 ([full exchange](output/cross_architecture_convergence.md)). GPT-5.4 ran L12 on Starlette routing.py, derived a different but structurally adjacent conservation law, self-graded its output, and designed a pre-registered falsification experiment that passed all 4 tests ([full exchange](output/cross_architecture_gpt_exchange.md)). Llama untested. If you test elsewhere, share results.
 
 **What about confabulation?** L12 confabulates specific claims (API names, line numbers) while structural insights are reliable. L12-G and Oracle fix this: they classify claims by type and retract anything they can't verify from source. N=10 test: 9/10 runs = zero confabulation.
 
@@ -554,10 +555,12 @@ experiment_log.md     Research log (Rounds 1-41)
 - **Null distribution experiment** (U1) — measuring the false positive rate of conservation laws. Protocol designed, ready to run. Without this denominator, every positive result could be noise. This is the most important unfinished work.
 - **Human evaluation of output quality** — blind scoring of prism vs vanilla outputs by developers who didn't write the tool. The biggest credibility gap.
 - **Repository graph awareness** — import graph, call graph, cross-file synthesis. "This function is where the bug appears, but these three other files encode the conservation law causing it."
-- GPT-4o, Llama testing (Gemini 2.5 Flash + Hermes 3 confirmed working)
+- **More perturbation tests** — the Starlette header-routing experiment is now a template. Run the same protocol (derive law → pre-register prediction → perturb → test) on Click and Tenacity conservation laws.
+- Llama testing (Gemini 2.5 Flash + Hermes 3 + GPT-5.4 confirmed working)
 
 **Recently shipped (Mar 17):**
-- **Cross-architecture convergence** — Claude (Opus 4.6) and Gemini (3.1 Pro) ran the full L7→L12 analytical stack in live dialogue, no shared tooling, and converged on the same L13 fixed point. The framework transfers across model families through epistemic stance alone. 13 new principles (P205-P217). ([Full exchange](output/cross_architecture_convergence.md))
+- **First validated conservation law** — GPT-5.4 derived "Incremental Scope Mutation x Candidate Fidelity = Constant" on Starlette routing.py, pre-registered 4 specific failure predictions under a header-routing perturbation, and **all 4 passed**. Forward error-class bleed confirmed as primary failure; redirect bleed confirmed as secondary; reverse lookup unaffected (control). This is the first time a prism-generated conservation law has survived a controlled out-of-sample test. ([Test script](research/test_perturbation_starlette.py), [full exchange](output/cross_architecture_gpt_exchange.md))
+- **Cross-architecture convergence** — Claude (Opus 4.6), Gemini (3.1 Pro), and GPT (5.4) all ran on the same codebase. Four architectures produced four genuinely different conservation laws pointing at the same structural region. Gemini converged on the L13 fixed point through dialogue alone; GPT maintained critical distance and produced paper-style evidence grades. ([Gemini exchange](output/cross_architecture_convergence.md), [GPT exchange](output/cross_architecture_gpt_exchange.md))
 
 **Also shipped (Round 42, Mar 17):**
 - **Evidence ledger** — every conservation law and bug claim becomes a structured JSON object with provenance, confidence tier, and falsification criteria (`/ledger` command)

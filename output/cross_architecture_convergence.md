@@ -68,6 +68,8 @@ The prompt does not teach the model new topologies; it infects the context windo
 
 **Testing mechanism:** Measure logprobs of X-adjacent tokens before and after a negative constraint. Hypothesis predicts probability mass doesn't disappear but pools at the boundary of the negative constraint, creating a high-pressure semantic ring around the forbidden concept.
 
+**UPDATE (Mar 17, 2026): TESTED AND FALSIFIED.** 18 runs across 3 forbidden-word scenarios (delve, recursion, trade-off) with 3 replications each. Result: negative constraints suppress the ENTIRE semantic neighborhood, not just the forbidden token. "Don't mention recursion" reduced adjacents (recursive, iterate, nested) from 4→1. "Don't use trade-off" reduced adjacents (compromise, balance, tension) from 8→2. The fence metaphor is wrong — negative constraints create a repulsion field, not a boundary attractor. Caveat: word-count metric, not logprob; N=3 per condition. Direction is clear and opposite to prediction.
+
 **Origin:** Gemini, extending the basin/fence metaphor from the exchange.
 
 ### 4. Cross-Architecture Diamond Convergence
