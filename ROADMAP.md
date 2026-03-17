@@ -1,5 +1,5 @@
 # Roadmap — Everything Left To Do
-**Last updated: Mar 15, 2026 (Round 41 in progress, Round 40 complete, Super Hermes v2 SHIPPED)**
+**Last updated: Mar 17, 2026 (Round 41 complete, 50 prisms, 20 modes, 56 tests, ~14,000 lines)**
 
 Single source of truth. All open work, research, tests, and ideas consolidated here.
 
@@ -74,14 +74,8 @@ All skills produce correct structure (generated lens, findings, constraint foote
 ### B1. Sonnet lens factory (`--factory`)
 - Design: `research/factory_design.md` (complete). Effort: 4-6 hours.
 
-### B2. Sub-artifact targeting (`/scan file subsystem`) — HIGHEST LEVERAGE
-- Design: `research/subsystem_design.md` (complete). Effort: 6-8 hours.
-- **Vision**: Map file into classes/functions/state boundaries → rank hotspots by complexity/coupling → run different prisms on different regions → synthesize cross-subsystem findings. Currently the single biggest quality upgrade available — running identity on a class that lies about its role + optimize on the hot path + error_resilience on the error handlers beats running L12 on the whole file.
-- **Phase 1**: AST split (Python) / regex heuristic (other langs). Min 10 lines per subsystem, max 8 subsystems.
-- **Phase 2**: Hotspot ranking — assign prisms based on subsystem characteristics (state mutation → error_resilience, API surface → api_surface, performance-critical → optimize).
-- **Phase 3**: Parallel execution with per-subsystem optimal prism/model.
-- **Phase 4**: Cross-subsystem synthesis — "this function is where the bug appears, but these three other subsystems encode the conservation law causing it."
-- **Cost model**: N+2 API calls (calibration + N subsystems + synthesis), ~$0.15-0.55.
+### B2. Sub-artifact targeting (`/scan file subsystem`) — DONE (Mar 16)
+DONE (Mar 16): All 4 phases implemented. AST split (Python) + regex heuristic (other langs). Calibration assigns optimal prism per subsystem. Cross-subsystem synthesis finds bugs invisible to single-subsystem analysis. VPS validated: 4179w, zero overlap with L12.
 
 ### B3. Regression benchmark suite (`research/benchmark.py`)
 - Design: `research/benchmark_design.md` (complete). Effort: 8-12 hours.
@@ -201,7 +195,7 @@ All depth scores are AI-evaluated. The scrambled vocabulary result (nonsense wor
 ### Current State
 
 **What's tested and wired:**
-- `OPTIMAL_PRISM_MODEL` dict: 37 prisms → optimal model (definitive_grid, Round 37)
+- `OPTIMAL_PRISM_MODEL` dict: 43 prisms → optimal model (definitive_grid Round 37 + additions through Mar 17)
 - `COOK_MODEL = "sonnet"`: all cookers use sonnet (P73)
 - `STATIC_CODE_PIPELINE`: 9-step pipeline, per-step optimal model
 - Default CLI model: sonnet (P204, Round 40)
@@ -767,15 +761,22 @@ J5 (cross-target) ──→ J6 (extraction) ──→ J7 (AgentsKB fill) ──�
 - 9 bug fixes, 3 prompt improvements, growth caps (200/500/500), DRY refactor (shared question extractor)
 - Docs: README (20 modes, ~13,500 lines, 50 prisms), CLAUDE.md, PRISMS.md, ROADMAP all updated
 
-### Mar 17 Session
+### Mar 17 Session (research + polish)
+**9 commits, 5 research deliverables, full consistency audit.**
 - Prism self-review of README: 14 structural bugs found, 6 fixed (epistemic honesty pass)
 - README thorough update: all 20 modes documented, CLI section complete, verify_claims added
 - Discover mode fix: content-aware domain inference (was extension-based, broke on .md files)
-- COOK_PROMPT updated for non-code artifacts
-- Discover timeout scales with input size (90s base + 30s per 1K chars)
-- Prism discover on README: 25 research domains generated
-- Full pipeline (`--solve --pipe full`) on research directions: 5 theoretical frameworks, 5 testable predictions, 5 practical applications, 5 fundamental questions
-- New research section U added to ROADMAP
+- COOK_PROMPT updated for non-code artifacts, discover timeout scales with input
+- Prism discover on README: 25 research domains generated successfully
+- Full pipeline (`--solve --pipe full`) on research directions: 5 frameworks, 5 predictions, 5 applications, 5 questions
+- Research section U: 19 experiments designed (U1-U14 theoretical, U15-U19 practical)
+- **U11 DONE**: MDL prediction SUPPORTED. ~30 words/operation constant across 50 prisms (84% within 2x median)
+- **U1 protocol READY**: Null distribution experiment. 10 scrambled prompts × 10 targets. Python script ready for VPS
+- **U2 lit review**: Information Bottleneck. P19 ≈ IB Lagrangian. 15 papers. Key: Zaslavsky 2018 (color naming = IB phase transitions)
+- **U4 lit review**: Cognitive Load Theory. Most precise mechanistic explanation. Found Arora 2025 (CLT in LLMs), Cowan 2001 (magical number 4). 12 papers
+- **U5 lit review**: Dual Process + Bayesian. Three frameworks converge: CLT (capacity), dual process (mode), Bayesian (mechanism). 20 papers
+- Consistency audit: line count ~13,500→~14,000, verify-claims added to explain output as mode #20
+- Cross-file audit: 50 prisms, 56 tests, 20 modes, ~14,000 lines — all consistent across 6 files
 
 ---
 
@@ -1550,20 +1551,21 @@ Where: op = cognitive operation, R = prompt length (rate), W = model capacity, K
 | Category | Open | Priority |
 |----------|------|----------|
 | **Hermes submission** (H) | SHIPPED | DONE |
-| **Prism immediate** (A) | 1 item (A3 scoring; A2 done) | LOW |
-| **Prism implementations** (B) | 10+4 features (B4/B5/B7/B9/B10/B12 done, B2/B8/B11 HIGH) | MEDIUM-HIGH — B2 subsystem + B8 evidence ledger + B11 repo graph = highest leverage |
-| **Model routing** (F) | 3 items (F1 done+scored, F4 done) | MEDIUM — F2/F3 for new models |
-| **Knowledge gap detection** (J) | 1 open: J11 (J1-J10 all done) | HIGH |
-| **VPS experiments** (C) | 4 | LOW-MEDIUM |
-| **Research questions** (D) | 3 | LOW |
+| **Prism immediate** (A) | 1 item (A3 scoring) | LOW |
+| **Prism implementations** (B) | B1/B3/B6/B8/B11 open (B2/B4/B5/B7/B9/B10/B12 done). B8 evidence ledger + B11 repo graph = highest leverage | MEDIUM-HIGH |
+| **Model routing** (F) | 3 items (F1 done+scored, F4 done) | MEDIUM |
+| **Knowledge gap detection** (J) | 1 open: J11 paper (J1-J10 all done) | MEDIUM |
+| **Research program** (U) | 19 experiments designed. U11 DONE, U1/U2/U4/U5 lit reviews done. U1 protocol ready for VPS. | **HIGHEST** — U1 null distribution is critical baseline |
+| **VPS experiments** (C) | 4 | LOW |
+| **Research questions** (D) | 3 (D1 human eval remains biggest credibility gap) | D1 HIGH |
 | **Code quality** (E) | 2 (E3 done) | LOW |
 | **Release & docs** (G) | 3 | MEDIUM |
-| **External research** (K) | K1-K16 + K21-K24 done (20 sections, ~300 papers). K17-K20 research done, roadmap headers missing. 45 features identified. | Research complete |
-| **Practical features** (P) | P1-P5 quick wins (proven), P6-P10 medium effort. 45 total features mapped from K sections. | P1-P5 = 5h total, all validated |
-| **Session tasks** (L) | 7 open (15 done) | L5 MEDIUM, rest LOW |
-| **Myths/gaps** (M) | 19 items | M16 HIGH (score inversion), rest MEDIUM |
-| **VPS test plan** (N) | 17 tests designed: 7 Tier 1, 6 Tier 2, 4 Tier 3 | Tier 1 = paper-critical |
-| **TOTAL OPEN** | **~35** | |
+| **External research** (K) | 20 sections complete, ~300 papers. 45 features identified. | Research complete |
+| **Practical features** (P) | P6/P7 DONE (Mar 16). P1-P5 quick wins, P8-P10 medium. | P1-P5 = 5h |
+| **Session tasks** (L) | 7 open (15 done) | LOW |
+| **Myths/gaps** (M) | 19 items | M16 HIGH |
+| **VPS test plan** (N) | 17 tests designed | Tier 1 = paper-critical |
+| **TOTAL OPEN** | **~30** | |
 
 ### P. PRACTICAL TRANSLATION: Theory → Prism CLI Features
 
@@ -1583,8 +1585,8 @@ Where: op = cognitive operation, R = prompt length (rate), W = model capacity, K
 
 | # | Feature | Research Basis | Effort |
 |---|---------|---------------|--------|
-| P6 | **Persistent knowledge** (`.deep/knowledge/`): save verified facts, read on next scan | K6 (AGM revision), J10 | 3h |
-| P7 | **AgentsKB gap fill**: auto-query MCP for KNOWLEDGE gaps | K6, K9, J7 | 3h |
+| P6 | ~~**Persistent knowledge**~~ DONE (Mar 16): `.deep/knowledge/`, `/kb` command, dedup, TTL | K6, J10 | DONE |
+| P7 | ~~**AgentsKB gap fill**~~ DONE (Mar 16): `_fill_gaps_agentskb()`, wired into verified pipeline | K6, K9, J7 | DONE |
 | P8 | **`--provenance`**: source attribution per finding (W3C PROV-O compatible) | K6 (RDF-star), K1 (Sounio) | 2h |
 | P9 | **Composition tester**: `prism.py --test-composition P1 P2` — checks if (P1∘P2) = (P2∘P1) | K11 (category theory), K20 (contextuality) | 3h |
 | P10 | **Operation classifier**: `--classify` — predicts circuit complexity + required model | K21 (circuit complexity), K12 (fitness landscape) | 4h |
@@ -1599,7 +1601,7 @@ Where: op = cognitive operation, R = prompt length (rate), W = model capacity, K
 
 **Validated**: Business plan → 1,305w, found `Moat credibility × Growth evidence = constant`, correctly identified 8% churn contradicts moat claim. All 5 phases executed in single pass.
 
-**Bug**: prism.py `--scan file oracle` crashes (traceback in _cmd_scan). Standalone `claude -p` works. Needs dispatch wiring fix.
+**Bug**: ~~prism.py `--scan file oracle` crashes~~ FIXED (Mar 16, commit 93d2b1d).
 
 **Battle Results (single-call, same cost):**
 
