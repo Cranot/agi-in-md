@@ -1,0 +1,114 @@
+{
+  "A0_abstract_baseline": {
+    "words": 618,
+    "structural_lines": 8,
+    "has_conservation_law": true,
+    "comparison_markers": 1,
+    "time": 15.296589851379395
+  },
+  "A1_but_on_other_hand": {
+    "words": 908,
+    "structural_lines": 15,
+    "has_conservation_law": true,
+    "comparison_markers": 3,
+    "time": 16.806135892868042
+  },
+  "A2_important_point": {
+    "words": 857,
+    "structural_lines": 18,
+    "has_conservation_law": true,
+    "comparison_markers": 1,
+    "time": 22.56571054458618
+  },
+  "A3_need_to_distinguish": {
+    "words": 766,
+    "structural_lines": 11,
+    "has_conservation_law": true,
+    "comparison_markers": 1,
+    "time": 18.140915870666504
+  },
+  "A4_code_nouns_control": {
+    "words": 562,
+    "structural_lines": 9,
+    "has_conservation_law": true,
+    "comparison_markers": 0,
+    "time": 13.982021570205688
+  },
+  "B0_zero_cues": {
+    "words": 556,
+    "structural_lines": 11,
+    "has_conservation_law": true,
+    "comparison_markers": 2,
+    "time": 43.255208253860474
+  },
+  "B1_one_cue": {
+    "words": 364,
+    "structural_lines": 13,
+    "has_conservation_law": false,
+    "comparison_markers": 3,
+    "time": 10.463421106338501
+  },
+  "B2_two_cues": {
+    "words": 21,
+    "structural_lines": 1,
+    "has_conservation_law": false,
+    "comparison_markers": 1,
+    "time": 7.393777370452881
+  },
+  "B3_three_cues": {
+    "words": 556,
+    "structural_lines": 9,
+    "has_conservation_law": true,
+    "comparison_markers": 1,
+    "time": 12.815218448638916
+  },
+  "B4_three_cues_code_nouns": {
+    "words": 927,
+    "structural_lines": 20,
+    "has_conservation_law": true,
+    "comparison_markers": 4,
+    "time": 25.890138387680054
+  },
+  "C1_structural": {
+    "words": 475,
+    "structural_lines": 8,
+    "has_conservation_law": true,
+    "comparison_markers": 0,
+    "time": 54.33569622039795
+  },
+  "C2_weak_reversion": {
+    "words": 604,
+    "structural_lines": 5,
+    "has_conservation_law": true,
+    "comparison_markers": 0,
+    "time": 67.90263366699219
+  },
+  "C3_rescue": {
+    "words": 336,
+    "structural_lines": 7,
+    "has_conservation_law": true,
+    "comparison_markers": 2,
+    "time": 52.14877152442932
+  },
+  "C2_H1_structural_haiku": {
+    "words": 364,
+    "structural_lines": 6,
+    "has_conservation_law": true,
+    "comparison_markers": 0,
+    "time": 9.178266763687134
+  },
+  "C2_H2_weak_reversion_haiku": {
+    "words": 364,
+    "structural_lines": 6,
+    "has_conservation_law": true,
+    "comparison_markers": 0,
+    "time": 9.069420337677002
+  },
+  "C2_H3_rescue_haiku": {
+    "words": 357,
+    "structural_lines": 13,
+    "has_conservation_law": true,
+    "comparison_markers": 2,
+    "time": 9.16429877281189
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "D1_generic_imperative": {
+    "words": 365,
+    "total_lines": 18,
+    "structural_lines": 12,
+    "structural_density_pct": 66.7,
+    "has_conservation_law": false,
+    "has_organizing_principle": true,
+    "comparison_markers": 3,
+    "time": 13.9,
+    "spec_completeness": "LOW",
+    "cue_type": "generic"
+  },
+  "D2_relational_operation": {
+    "words": 455,
+    "total_lines": 27,
+    "structural_lines": 17,
+    "structural_density_pct": 63.0,
+    "has_conservation_law": true,
+    "has_organizing_principle": true,
+    "comparison_markers": 3,
+    "time": 11.5,
+    "spec_completeness": "HIGH",
+    "cue_type": "relational"
+  },
+  "D3_output_form": {
+    "words": 1205,
+    "total_lines": 284,
+    "structural_lines": 6,
+    "structural_density_pct": 2.1,
+    "has_conservation_law": true,
+    "has_organizing_principle": true,
+    "comparison_markers": 0,
+    "time": 31.9,
+    "spec_completeness": "HIGH",
+    "cue_type": "output-form"
+  },
+  "D4_domain_vocabulary": {
+    "words": 4607,
+    "total_lines": 473,
+    "structural_lines": 190,
+    "structural_density_pct": 40.2,
+    "has_conservation_law": true,
+    "has_organizing_principle": true,
+    "comparison_markers": 35,
+    "time": 66.9,
+    "spec_completeness": "LOW",
+    "cue_type": "vocabulary"
+  }
+}

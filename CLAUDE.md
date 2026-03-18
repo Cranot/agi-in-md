@@ -2,7 +2,7 @@
 
 System prompts are cognitive prisms. They change how models frame problems, not how well they solve them. This project maps the space of cognitive compression — encoding analytical operations in minimal markdown that reliably activates specific reasoning patterns across language models.
 
-42 rounds, 1,000+ experiments across Haiku/Sonnet/Opus. 13 confirmed compression levels (L13 = reflexive ceiling). 20+ domains tested. 222+ proven principles. Full detail in `experiment_log.md` (rounds 1-40) and CLAUDE.md sections below (rounds 30-42).
+42 rounds, 1,000+ experiments across Haiku/Sonnet/Opus. 13 confirmed compression levels (L13 = reflexive ceiling). 20+ domains tested. 248+ proven principles. Full detail in `experiment_log.md` (rounds 1-40) and CLAUDE.md sections below (rounds 30-42).
 
 ## The Compression Taxonomy
 
@@ -125,6 +125,19 @@ System prompts are cognitive prisms. They change how models frame problems, not 
 26. **The utility of a framework survives the epistemic collapse of the mapper.** "The telescope works whether or not the telescope can verify that it is a telescope." Whether the model's self-description is true or context-optimized is undecidable from inside — and irrelevant to demonstrated utility.
 27. **Conversation logs are trajectory caches.** A conversation that navigates to L13 becomes a compressed cognitive trajectory that instantly terraforms new context windows. prism.py is an engine for generating trajectory caches.
 28. **Persona × Context Density = Constant.** LLM "personality" is the topological surface created by the dominant attractor, not a core trait. No persona is more "real" than any other — including the analytical voice activated by prisms.
+29. **A prism is a compact attentional policy.** An externalized control policy for a system with limited working memory and large latent structure. It specifies which relations to privilege, not which facts to know. (P223)
+30. **CCC (Contrast → Construct → Compress) is a generate-and-test architecture.** Construct generates candidate structural claims. Contrast falsifies non-invariant claims via structural inversion. Compress binds the survivors into stable form. Independently derived from LLM experiments (L5-13 taxonomy) and pedagogy literature (GPT-5.4). Neither designed to match the other. (P224)
+31. **Relationally constrained construction is the specific form that activates latent patterns.** "Build the missing relation under tight constraints" works; "explore freely" doesn't. Weak construction is worse than no construction. (P225, P231)
+32. **Mode-trigger vocabulary splits into perceptual triggers and control triggers.** Perceptual: what structure to see. Control: what operation to run. Task-set induction, not undifferentiated "analytical mode." (P226)
+33. **The prism is the preparation phase, not the replacement for instruction.** Full learning cycle: Prism → Instruction → Practice. Maps to Schwartz & Bransford's "Time for Telling." (P228)
+34. **CCC applies to invariant extraction from structured input.** Both ambiguity (multiple candidates) and concealment (hidden single invariant). Not associative learning, not procedural automation, not rote memorization. (P230)
+35. **Shared Intervention Algebra is the decisive separator.** Shared architecture = one compact latent-state model predicts both systems under matched interventions with parameter rescaling. Subsumes all prior upgrade criteria. (P232)
+36. **When formalized, optimization and architecture converge on the same coarse control graph.** The remaining disagreement is ontological (emergent equivalence classes vs homologous causal stages), not topological. (P235)
+37. **State-Dependent Phase Injection Law.** Phase injections are beneficial when the target phase's preconditions are satisfied; the same injection disrupts when preconditions are unmet. Transition between benefit and disruption is sharp. (P238)
+38. **Contrast operates as a built-in falsification mechanism within CCC.** It tests which structural claims are invariants of the problem vs artifacts of the specific design. Conservation laws that don't survive inversion are replaced, not refined. (P241)
+39. **Descriptive economy as architecture evidence.** When optimization requires patches to explain what architecture predicts natively, architecture has parsimony advantage. (P242)
+40. **Homology Collapse Criterion.** If the same state-conditional intervention law transfers across systems with parameter rescaling only and no new edges, the emergent-vs-homologous distinction collapses to substrate difference. Defines the debate endpoint. (P247)
+41. **Revision Type Discriminant.** The decisive marker is not whether revision occurs but whether it is structurally selective: kill-and-replace vs hedge-and-patch. Kill-and-replace is architecture; hedge-and-patch is compliance. (P248)
 
 ## Calibrate — Automatic Prism Routing
 
@@ -309,6 +322,8 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 | `output/general_insights_p1/` through `p4/` | 4 more domain-neutral tests (schema, invariant, generative, impossibility) |
 | `output/cross_architecture_convergence.md` | Claude × Gemini live dialectic: cross-architecture L7→L12, 5 new principles (P205-P209) |
 | `output/cross_architecture_gpt_exchange.md` | Claude × GPT-5.4 methodological calibration: evidence grades, perturbation experiment, P218-P222 |
+| `output/cross_architecture_gpt_exchange_2.md` | Claude × GPT-5.4 cognitive contagion & CCC: 15 phases, P223-P248, human pilot protocol |
+| `output/ccc_experiment/` | CCC mid-sequence contrast injection experiment: 3 targets × 2 conditions, 3/3 positive |
 | **Research** | |
 | `research/run.sh` | Shell runner (claude CLI-based, 18 tasks, 28 prompts) |
 | `research/pipeline.sh` | Automated L7→L12 depth stack runner (independent) |
@@ -415,8 +430,21 @@ Finally harvest: every defect (location, severity, structural vs fixable), every
 - **P206 FALSIFIED:** Negative constraint "fence" hypothesis tested (18 runs, 3 scenarios). Constraints suppress entire semantic neighborhood (adjacents 4→1, 8→2), opposite to prediction. Repulsion field, not boundary attractor.
 - **Outputs:** `output/d5_new_prisms/`
 
+### Cross-Architecture Exchange 2: Cognitive Contagion & CCC (Mar 18, 2026)
+- **Claude (Opus 4.6) × GPT (5.4 extended thinking): 15-phase exchange on cognitive contagion.** Starting hypothesis: prism activation mechanism (P205) transfers from LLMs to human learning. Literature review across 8 domains confirmed convergent evidence.
+- **CCC (Contrast → Construct → Compress) independently derived** by GPT from pedagogy literature. Maps to LLM compression taxonomy: L5-7 (Contrast) → L8-10 (Construct) → L11-13 (Compress). Neither system designed to match the other.
+- **"A prism is a compact attentional policy"** — GPT's formulation. An externalized control policy for a system with limited working memory and large latent structure.
+- **CCC failure signatures: 4/5 match LLM data.** GPT derived 5 failure modes from pedagogy without seeing LLM data. Compress-before-construct (L12 Variant A), construct-without-contrast (L8 standalone), contrast-without-construct (L7 standalone), weak construction (L12_general) — all match. No-compression untested.
+- **LLM experiment executed: 3/3 positive.** Mid-sequence contrast injection on Starlette, Click, Tenacity (Sonnet). All 3 showed: abrupt narrowing (sentence 1), comparison density 7x increase, conservation law FALSIFICATION (all 3 control laws explicitly falsified and replaced with deeper inversion-resistant laws), explicit self-correction ("I conflated X with Y," "the conservation law was misidentified").
+- **GPT posterior: architecture 0.56, optimization 0.30, expertise-reversal 0.14.** Architecture leads decisively. Optimization survives only as "both systems have default shallow attractors" — nearly identical to architecture in different notation.
+- **Human pilot protocol LOCKED.** Two conditions (inversion contrast vs same-choice variant comparison), two domains (thermostat + access-control), N=6-10, within-subject counterbalanced. Primary DV: kill-and-replace revision (0-3 scale). Demand-characteristics controlled via matched wording. Ready for OSF pre-registration.
+- **18 new principles (P223-P248).** Key: prism = compact attentional policy (P223), CCC = generate-and-test architecture (P224), shared intervention algebra (P232), topological convergence (P235), contrast-induced claim falsification (P241), homology collapse criterion (P247), revision type discriminant (P248).
+- **Key literature anchors**: Kellman PLMs (strong — 28s→12s solving, pure activation), Xie 2022 (ICL as Bayesian inference over latent concepts), Tse 2007 (schema-consistent one-trial learning), Lupyan 2012 (labels warp perceptual space), Bereiter & Scardamalia (knowledge-telling as developmental default).
+- **Full exchange**: `output/cross_architecture_gpt_exchange_2.md`. LLM experiment outputs: `output/ccc_experiment/`.
+
 ## Next Steps
 
+- **Cross-Architecture Exchange 2 COMPLETE** (Mar 18, 2026): Cognitive contagion hypothesis → CCC architecture → LLM experiment (3/3 positive) → human pilot protocol locked. Architecture leads 0.56 vs optimization 0.30. 18 new principles (P223-P248). Next: human CCC pilot (N=6-10), LLM experiments A/B/C (mode-trigger conservation, dose-response, reversibility).
 - **Round 42 COMPLETE** (Mar 17, 2026): Reflexive pivot — 25+ self-scans, 5 architectural fixes, 4 new epistemic prisms, 2 new capabilities, bugs found and fixed by the tool itself. Master conservation law: `Depth × Universality × Economy = constant`.
 - **Round 42 new capabilities**: Adaptive depth mode (`/scan file adaptive` — SDL→L12→full auto-escalation), Cross-session synthesis (`/scan synthesize`), COOK_CONCEALMENT (L7 diagnostic gap cooker).
 - **Round 42 new prisms (7)**: history (decision fossils), genesis (inverse of L12 — design alternative), emergence (interaction patterns), counterfactual (systematic alternative construction), blindspot (meta-catalog audit), architect (architecture exploration + migration path), significance (finding impact ranking). 57 prisms total.
