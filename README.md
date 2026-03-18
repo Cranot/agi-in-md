@@ -54,7 +54,7 @@ Depth = how deep the analysis goes, scored 1-10. Naming a pattern is ~7. Derivin
 |--------|--------|
 | **Cost** | Single scan ~$0.05 (Sonnet), ~$0.01 with Haiku |
 | **Depth gain** | **9.8 avg vs 8.2 avg** on real code (Starlette, Click, Tenacity) — AI-evaluated structural depth, not factual accuracy |
-| **Experiments** | **1,000+** raw outputs across 42 research rounds |
+| **Experiments** | **1,000+** raw outputs across 42 research rounds + 5 CCC experiments |
 | **Domains tested** | **20+** — code, math, philosophy, legal, medical, music, fiction, business, more |
 | **Hit rate** | **97%+** on construction-based analysis, **14/14** on full pipeline |
 | **Factual accuracy** | **97%** on planted-bug code, **~42%** on real production code — structural insights reliable, specific bug claims are hypotheses ([details](#accuracy)) |
@@ -558,7 +558,13 @@ experiment_log.md     Research log (Rounds 1-41)
 - **More perturbation tests** — the Starlette header-routing experiment is now a template. Run the same protocol (derive law → pre-register prediction → perturb → test) on Click and Tenacity conservation laws.
 - Llama testing (Gemini 2.5 Flash + Hermes 3 + GPT-5.4 confirmed working)
 
-**Recently shipped (Mar 17):**
+**Recently shipped (Mar 18):**
+- **CCC architecture (Contrast-Construct-Compress)** — independently derived by GPT-5.4 from pedagogy literature, maps to L5-13 taxonomy. Neither system designed to match. A generate-and-test architecture: Construct generates candidate claims, Contrast falsifies non-invariants via structural inversion, Compress binds survivors. LLM experiment (3/3 targets): contrast injection falsified ALL control conservation laws and produced deeper inversion-resistant replacements. ([Full 16-phase exchange](output/cross_architecture_gpt_exchange_2.md))
+- **Human mode-trigger phrases work on LLMs** — Bereiter & Scardamalia's knowledge-transforming cues ("but on the other hand", "an important point I haven't considered") amplify structural analysis by 88-125%, outperforming code-vocabulary cues (13%). Trigger-profile conservation across humans and LLMs.
+- **26 new principles (P223-P248)** — prism = compact attentional policy, shared intervention algebra, topological convergence, non-monotonic construction failure, revision type discriminant. Architecture leads optimization 0.62 vs 0.25 (GPT-5.4 adjudication).
+- **Human pilot protocol locked** — pre-registerable design for testing CCC in human structural reasoning. 2 conditions, 2 domains, 4 DVs, demand-matched control.
+
+**Previously shipped (Mar 17):**
 - **First validated conservation law** — GPT-5.4 derived "Incremental Scope Mutation x Candidate Fidelity = Constant" on Starlette routing.py, pre-registered 4 specific failure predictions under a header-routing perturbation, and **all 4 passed**. Forward error-class bleed confirmed as primary failure; redirect bleed confirmed as secondary; reverse lookup unaffected (control). This is the first time a prism-generated conservation law has survived a controlled out-of-sample test. ([Test script](research/test_perturbation_starlette.py), [full exchange](output/cross_architecture_gpt_exchange.md))
 - **Cross-architecture convergence** — Claude (Opus 4.6), Gemini (3.1 Pro), and GPT (5.4) all ran on the same codebase. Four architectures produced four genuinely different conservation laws pointing at the same structural region. Gemini converged on the L13 fixed point through dialogue alone; GPT maintained critical distance and produced paper-style evidence grades. ([Gemini exchange](output/cross_architecture_convergence.md), [GPT exchange](output/cross_architecture_gpt_exchange.md))
 
