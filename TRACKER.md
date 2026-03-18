@@ -1,5 +1,5 @@
 # Unexplored Territories & Open Work Tracker
-**Created: Mar 14, 2026** | **Last updated: Mar 14, 2026 (Round 40 results integrated)**
+**Created: Mar 14, 2026** | **Last updated: Mar 19, 2026 (CCC exchange + experiments integrated)**
 
 Status legend: [ ] = not started, [~] = in progress, [x] = done, [!] = blocked
 
@@ -216,21 +216,72 @@ Status legend: [ ] = not started, [~] = in progress, [x] = done, [!] = blocked
 
 ---
 
+## 6. CCC / COGNITIVE CONTAGION (Mar 18, 2026)
+
+### E1. CCC mid-sequence contrast injection (LLM)
+- **Result**: 3/3 targets (Starlette, Click, Tenacity) show abrupt narrowing + conservation law falsification. All 3 control laws explicitly falsified and replaced with deeper inversion-resistant laws. Comparison density 7x increase. Self-correction categorical and named.
+- **Status**: [x] DONE
+
+### E2. CCC failure signatures
+- **Result**: GPT-5.4 derived 5 failure modes from pedagogy theory. 4/5 matched existing LLM data (compress-before-construct, construct-without-contrast, contrast-without-construct, weak construction).
+- **Status**: [x] DONE
+
+### E3. Multiplication prism prototype
+- **What**: Interactive HTML implementing Contrast→Construct→Compress for multiplication
+- **Result**: Built (`math-prism.html`). 5 topics (add/subtract/multiply/divide/fractions), 4 modes (learn/explore/challenge/stories), 3 difficulty levels.
+- **Status**: [x] DONE — local demo, not in repo
+
+### E4. Mode-trigger vocabulary test
+- **Result**: Human mode-trigger phrases (Bereiter & Scardamalia) amplify LLM structural output. "But on the other hand" +88%, "important point" +125%. Code nouns only +13%. Trigger-profile conservation confirmed. P15 revised: code nouns prevent agentic drift, relational-operation cues are the primary trigger.
+- **Status**: [x] DONE
+
+### E5. Belief stability gate
+- **Result**: First-person human data confirms belief stability as injection gate. E=0 (absent): nothing to test. E=1 (partially stable): inversion opens cracks. E=2 (locked): instant dismissal. Refined from generic "Construct-active" to ternary stability scale.
+- **Status**: [x] DONE
+
+### E6. GPT-5.4 Exchange 2 (16 phases)
+- **Result**: CCC independently derived. Topological convergence confirmed (formal models converge on same graph). Architecture leads 0.62 vs optimization 0.25. 26 new principles (P223-P248). Full exchange: `output/cross_architecture_gpt_exchange_2.md`
+- **Status**: [x] DONE
+
+### E7. Experiments A/B/C (mode-trigger, dose-response, reversibility)
+- **Result**: (A) Trigger conservation confirmed. (B) Non-monotonic dose-response: 0 cues works, 1-2 cues WORSE, 3+ recovers (P231). (C) Structural mode is context-stable on both Sonnet and Haiku (P27 extended).
+- **Status**: [x] DONE
+
+### E8. Human CCC pilot
+- **What**: Pre-registered experiment testing CCC in human structural reasoning
+- **Design**: N=8-10, 2 domains (smart thermostat + recipe scaling), 2 conditions (inversion vs same-choice variant), belief stability gate (E=1), kill-and-replace as primary DV
+- **Pre-registration**: `research/ccc_human_pilot_preregistration.md`
+- **Steps**:
+  - [ ] **E8a**: Upload pre-registration to OSF or AsPredicted (timestamp predictions before data)
+  - [ ] **E8b**: Recruit 8-10 participants, run protocol
+  - [ ] **E8c**: Blind scoring by 2 raters, apply falsification criteria
+- **Status**: [ ] Protocol locked. Awaiting execution.
+
+### E9. Write-up / preprint
+- **What**: CCC theory + LLM experiments + human pilot protocol. Paper-shaped.
+- **Status**: [ ]
+
+### E10. P15 revision in prism.py
+- **What**: Code nouns prevent agentic drift but are not the primary mode trigger. Relational-operation cues are. May affect routing logic.
+- **Status**: [ ]
+
+### E11. Process specification experiment (D)
+- **Result**: At equal cue count, relational-operation cue produces conservation law; generic imperative does not. Output-form specification produces form compliance without depth. Process specification > output-form specification. D4 showed pathological P205: prism vocabulary triggered hallucinated pipeline simulation.
+- **Status**: [x] DONE
+
+---
+
 ## Summary
 
 | Category | Total | Done | Remaining | Priority |
 |----------|-------|------|-----------|----------|
-| Planned but not executed | 5 | 4 | 1 (sub-artifact impl) | HIGH |
+| Planned but not executed | 5 | 4 | 1 (sub-artifact impl) | MEDIUM |
 | Open research questions | 10 | 7 | 3 (R3 diamond, R8 blind, R9 GPT) | MEDIUM |
 | Infrastructure gaps | 7 | 7 | 0 | DONE |
 | Documentation/release blockers | 7 | 7 | 0 | DONE |
-| Additional items (memory sweep) | 10 | 7 | 3 (cross-lang, SDL re-test, pipe V2) | LOW |
-| Code bugs found during R40 | 6 | 6 | 0 | DONE |
-| UX audit items | 3 | 3 | 0 | DONE |
-| Design docs | 3 | 3 | 0 | DONE |
-| **TOTAL** | **51** | **44** | **7** | |
-
-**Remaining items consolidated into ROADMAP.md** — see that file for the single source of truth on all open work (21 items across 7 categories).
+| Additional items (memory sweep) | 10 | 7 | 3 (cross-lang, SDL re-test, neutral) | LOW |
+| CCC / Cognitive Contagion | 11 | 8 | 3 (human pilot, write-up, P15 code) | **HIGH** |
+| **TOTAL** | **50** | **40** | **10** | |
 
 ---
 
